@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseDiff, toFileIndex } from "./diff";
-import { emptyReviewState } from "./review-state";
+import { emptyReviewState, markHunksReviewed } from "./review-state";
 import { commitFiles, snapshotFiles } from "./snapshot";
 import {
   readAllSnapshots,
@@ -11,6 +11,7 @@ import {
   parseSnapshot,
   snapshotPath,
   type TextFileAdapter,
+  updateReviewState,
 } from "./storage";
 import { commit, fileDiff, snap } from "./test-helpers";
 
@@ -61,6 +62,18 @@ describe("record storage", () => {
     expect(await store.readReviewState()).toBeNull();
     await store.writeReviewState(emptyReviewState());
     expect(await store.readReviewState()).toEqual(emptyReviewState());
+  });
+
+  it("applies updates to the state on disk, keeping another writer's check-offs", async () => {
+    const a = snap({ at: "2026-10-26T00:00:00.000Z", phase: "implementation", head: "a1", diff: fileDiff("f", [{ oldStart: 1, newStart: 1, lines: ["+x"] }, { oldStart: 9, newStart: 9, lines: ["+y"] }]) });
+    const [h1, h2] = a.files[0].hunks.map((h) => h.id);
+    const adapter = memoryAdapter();
+    const store = recordReviewStateStore(adapter, RECORD);
+    expect(await updateReviewState(store, (s) => s)).toEqual(emptyReviewState());
+    await store.writeReviewState(markHunksReviewed(emptyReviewState(), a, [h1], "t1"));
+    const next = await updateReviewState(store, (s) => markHunksReviewed(s, a, [h2], "t2"));
+    expect(Object.keys(next.hunks).sort()).toEqual([h1, h2].sort());
+    expect(await store.readReviewState()).toEqual(next);
   });
 
   it("rejects files that are not snapshots", async () => {

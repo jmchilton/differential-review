@@ -1,0 +1,418 @@
+{
+  "schemaVersion": 1,
+  "kind": "differential-review-snapshot",
+  "fingerprintVersion": "h1",
+  "id": "20261026T054904Z-hardening-3716845991d3",
+  "createdAt": "2026-10-26T05:49:04.738Z",
+  "phase": "hardening",
+  "repo": "demo",
+  "branch": "feature",
+  "head": "3716845991d3812fe67ddad5239de49cb3ce5c28",
+  "base": {
+    "name": "main",
+    "source": "upstream_base_branch",
+    "ref": "main",
+    "sha": "2c77dfa88c1d8dfb92daebff91aab438bd5acfd9",
+    "mergeBase": "2c77dfa88c1d8dfb92daebff91aab438bd5acfd9"
+  },
+  "previousSnapshotId": "20261026T054902Z-implementation-1bed0440a767",
+  "diff": "diff --git a/README.md b/README.md\nindex 09a4fdb5c1326441361db03b591a79b36cad1501..c1a17813a28c3ad2010e82ea23bd2de6b199f497 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,3 +1,3 @@\n # Demo\n \n-Usage: run it.\n+Usage: run it with a name.\ndiff --git a/app.py b/app.py\nindex 81b8f3b9ddbfcd72582b693a013dee4b9574058c..3be0fae3b1814f237b935567f4748a9d4794e50d 100644\n--- a/app.py\n+++ b/app.py\n@@ -4,7 +4,7 @@ line 1\n line 2\n line 3\n line 4\n-line 5\n+line 5 greeting = \"hi\"\n line 6\n line 7\n line 8\n@@ -29,7 +29,7 @@ line 26\n line 27\n line 28\n line 29\n-line 30\n+line 30 print(greeting.upper())\n line 31\n line 32\n line 33\ndiff --git a/config.yml b/settings.yml\nsimilarity index 100%\nrename from config.yml\nrename to settings.yml\ndiff --git a/util.py b/util.py\nindex 4c8b581df7ebee5ef6393e96bc96f0b8b22e71dc..d359ba531895badf6823c19395dc5899a35888d9 100644\n--- a/util.py\n+++ b/util.py\n@@ -1,2 +1,11 @@\n def helper():\n     return 1\n+\n+\n+def greet(name):\n+    \"\"\"Return a friendly greeting.\"\"\"\n+    if not name:\n+        raise ValueError(\"name required\")\n+    prefix = \"hi\"\n+    punctuation = \"!\"\n+    return f\"{prefix} {name}{punctuation}\"\n",
+  "files": [
+    {
+      "path": "README.md",
+      "oldPath": "README.md",
+      "newPath": "README.md",
+      "status": "modified",
+      "binary": false,
+      "oldMode": null,
+      "newMode": null,
+      "hunks": [
+        {
+          "id": "h1:7ac0fd83f1f4efa9",
+          "contentHash": "h1:249af8e39601e791",
+          "occurrence": 0,
+          "kind": "text",
+          "header": "@@ -1,3 +1,3 @@",
+          "oldStart": 1,
+          "oldLines": 3,
+          "newStart": 1,
+          "newLines": 3,
+          "added": 1,
+          "removed": 1,
+          "whitespaceOnly": false
+        }
+      ]
+    },
+    {
+      "path": "app.py",
+      "oldPath": "app.py",
+      "newPath": "app.py",
+      "status": "modified",
+      "binary": false,
+      "oldMode": null,
+      "newMode": null,
+      "hunks": [
+        {
+          "id": "h1:876c092129f548ca",
+          "contentHash": "h1:f4f5e3345a8c8de7",
+          "occurrence": 0,
+          "kind": "text",
+          "header": "@@ -4,7 +4,7 @@ line 1",
+          "oldStart": 4,
+          "oldLines": 7,
+          "newStart": 4,
+          "newLines": 7,
+          "added": 1,
+          "removed": 1,
+          "whitespaceOnly": false
+        },
+        {
+          "id": "h1:1e47931148969d18",
+          "contentHash": "h1:e2251f9c532f7b50",
+          "occurrence": 0,
+          "kind": "text",
+          "header": "@@ -29,7 +29,7 @@ line 26",
+          "oldStart": 29,
+          "oldLines": 7,
+          "newStart": 29,
+          "newLines": 7,
+          "added": 1,
+          "removed": 1,
+          "whitespaceOnly": false
+        }
+      ]
+    },
+    {
+      "path": "settings.yml",
+      "oldPath": "config.yml",
+      "newPath": "settings.yml",
+      "status": "renamed",
+      "binary": false,
+      "oldMode": null,
+      "newMode": null,
+      "hunks": [
+        {
+          "id": "h1:65fa053271a715f0",
+          "contentHash": "h1:cc62e41063462bdd",
+          "occurrence": 0,
+          "kind": "meta",
+          "header": "renamed config.yml → settings.yml",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 0,
+          "newLines": 0,
+          "added": 0,
+          "removed": 0,
+          "whitespaceOnly": false
+        }
+      ]
+    },
+    {
+      "path": "util.py",
+      "oldPath": "util.py",
+      "newPath": "util.py",
+      "status": "modified",
+      "binary": false,
+      "oldMode": null,
+      "newMode": null,
+      "hunks": [
+        {
+          "id": "h1:02ef8092b58fef4f",
+          "contentHash": "h1:9e37e4c8bc342794",
+          "occurrence": 0,
+          "kind": "text",
+          "header": "@@ -1,2 +1,11 @@",
+          "oldStart": 1,
+          "oldLines": 2,
+          "newStart": 1,
+          "newLines": 11,
+          "added": 9,
+          "removed": 0,
+          "whitespaceOnly": false
+        }
+      ]
+    }
+  ],
+  "commits": [
+    {
+      "sha": "1d0ee34e23c6f3175943971153258734bd7623ee",
+      "parents": [
+        "2c77dfa88c1d8dfb92daebff91aab438bd5acfd9"
+      ],
+      "patchId": "d91567ec9e010fe934d4ec4c51b2da490e67213b",
+      "subject": "Add greeting helper",
+      "message": "Add greeting helper",
+      "author": "Test <test@example.org>",
+      "authorDate": "2026-10-26T00:01:00Z",
+      "diff": "diff --git a/app.py b/app.py\nindex 81b8f3b9ddbfcd72582b693a013dee4b9574058c..3be0fae3b1814f237b935567f4748a9d4794e50d 100644\n--- a/app.py\n+++ b/app.py\n@@ -4,7 +4,7 @@ line 1\n line 2\n line 3\n line 4\n-line 5\n+line 5 greeting = \"hi\"\n line 6\n line 7\n line 8\n@@ -29,7 +29,7 @@ line 26\n line 27\n line 28\n line 29\n-line 30\n+line 30 print(greeting.upper())\n line 31\n line 32\n line 33\ndiff --git a/util.py b/util.py\nindex 4c8b581df7ebee5ef6393e96bc96f0b8b22e71dc..da58ed730e8c43559ef61d563790da48dde2f52e 100644\n--- a/util.py\n+++ b/util.py\n@@ -1,2 +1,9 @@\n def helper():\n     return 1\n+\n+\n+def greet(name):\n+    \"\"\"Return a friendly greeting.\"\"\"\n+    prefix = \"hi\"\n+    punctuation = \"!\"\n+    return f\"{prefix} {name}{punctuation}\"\n",
+      "files": [
+        {
+          "path": "app.py",
+          "oldPath": "app.py",
+          "newPath": "app.py",
+          "status": "modified",
+          "binary": false,
+          "oldMode": null,
+          "newMode": null,
+          "hunks": [
+            {
+              "id": "h1:876c092129f548ca",
+              "contentHash": "h1:f4f5e3345a8c8de7",
+              "occurrence": 0,
+              "kind": "text",
+              "header": "@@ -4,7 +4,7 @@ line 1",
+              "oldStart": 4,
+              "oldLines": 7,
+              "newStart": 4,
+              "newLines": 7,
+              "added": 1,
+              "removed": 1,
+              "whitespaceOnly": false
+            },
+            {
+              "id": "h1:1e47931148969d18",
+              "contentHash": "h1:e2251f9c532f7b50",
+              "occurrence": 0,
+              "kind": "text",
+              "header": "@@ -29,7 +29,7 @@ line 26",
+              "oldStart": 29,
+              "oldLines": 7,
+              "newStart": 29,
+              "newLines": 7,
+              "added": 1,
+              "removed": 1,
+              "whitespaceOnly": false
+            }
+          ]
+        },
+        {
+          "path": "util.py",
+          "oldPath": "util.py",
+          "newPath": "util.py",
+          "status": "modified",
+          "binary": false,
+          "oldMode": null,
+          "newMode": null,
+          "hunks": [
+            {
+              "id": "h1:458813b091c620a1",
+              "contentHash": "h1:f73cd8442eef7e0f",
+              "occurrence": 0,
+              "kind": "text",
+              "header": "@@ -1,2 +1,9 @@",
+              "oldStart": 1,
+              "oldLines": 2,
+              "newStart": 1,
+              "newLines": 9,
+              "added": 7,
+              "removed": 0,
+              "whitespaceOnly": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sha": "4fc58d8656d1c0cd6a3e829c9b80c1e16770f3f1",
+      "parents": [
+        "1d0ee34e23c6f3175943971153258734bd7623ee"
+      ],
+      "patchId": "efe20870e4c2796e8ae17b9b8278ca7ec9e19fc7",
+      "subject": "Document greeting usage",
+      "message": "Document greeting usage",
+      "author": "Test <test@example.org>",
+      "authorDate": "2026-10-26T00:02:00Z",
+      "diff": "diff --git a/README.md b/README.md\nindex 09a4fdb5c1326441361db03b591a79b36cad1501..c1a17813a28c3ad2010e82ea23bd2de6b199f497 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,3 +1,3 @@\n # Demo\n \n-Usage: run it.\n+Usage: run it with a name.\n",
+      "files": [
+        {
+          "path": "README.md",
+          "oldPath": "README.md",
+          "newPath": "README.md",
+          "status": "modified",
+          "binary": false,
+          "oldMode": null,
+          "newMode": null,
+          "hunks": [
+            {
+              "id": "h1:7ac0fd83f1f4efa9",
+              "contentHash": "h1:249af8e39601e791",
+              "occurrence": 0,
+              "kind": "text",
+              "header": "@@ -1,3 +1,3 @@",
+              "oldStart": 1,
+              "oldLines": 3,
+              "newStart": 1,
+              "newLines": 3,
+              "added": 1,
+              "removed": 1,
+              "whitespaceOnly": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sha": "a2cc42bac425ca6e3a85dc09c3fffebb5ecc1123",
+      "parents": [
+        "4fc58d8656d1c0cd6a3e829c9b80c1e16770f3f1"
+      ],
+      "patchId": "b3b48e4712a6872b1bbcb3772be4805afaf1fcd7",
+      "subject": "Rename config to settings",
+      "message": "Rename config to settings",
+      "author": "Test <test@example.org>",
+      "authorDate": "2026-10-26T00:03:00Z",
+      "diff": "diff --git a/config.yml b/settings.yml\nsimilarity index 100%\nrename from config.yml\nrename to settings.yml\n",
+      "files": [
+        {
+          "path": "settings.yml",
+          "oldPath": "config.yml",
+          "newPath": "settings.yml",
+          "status": "renamed",
+          "binary": false,
+          "oldMode": null,
+          "newMode": null,
+          "hunks": [
+            {
+              "id": "h1:65fa053271a715f0",
+              "contentHash": "h1:cc62e41063462bdd",
+              "occurrence": 0,
+              "kind": "meta",
+              "header": "renamed config.yml → settings.yml",
+              "oldStart": 0,
+              "oldLines": 0,
+              "newStart": 0,
+              "newLines": 0,
+              "added": 0,
+              "removed": 0,
+              "whitespaceOnly": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sha": "3716845991d3812fe67ddad5239de49cb3ce5c28",
+      "parents": [
+        "a2cc42bac425ca6e3a85dc09c3fffebb5ecc1123"
+      ],
+      "patchId": "29f588c82eee0811605f7e4a1aa360bfae00a9a5",
+      "subject": "Validate greeting name",
+      "message": "Validate greeting name",
+      "author": "Test <test@example.org>",
+      "authorDate": "2026-10-26T00:06:00Z",
+      "diff": "diff --git a/util.py b/util.py\nindex da58ed730e8c43559ef61d563790da48dde2f52e..d359ba531895badf6823c19395dc5899a35888d9 100644\n--- a/util.py\n+++ b/util.py\n@@ -4,6 +4,8 @@ def helper():\n \n def greet(name):\n     \"\"\"Return a friendly greeting.\"\"\"\n+    if not name:\n+        raise ValueError(\"name required\")\n     prefix = \"hi\"\n     punctuation = \"!\"\n     return f\"{prefix} {name}{punctuation}\"\n",
+      "files": [
+        {
+          "path": "util.py",
+          "oldPath": "util.py",
+          "newPath": "util.py",
+          "status": "modified",
+          "binary": false,
+          "oldMode": null,
+          "newMode": null,
+          "hunks": [
+            {
+              "id": "h1:0fe538dbf2516f40",
+              "contentHash": "h1:7d24a569d7525a3e",
+              "occurrence": 0,
+              "kind": "text",
+              "header": "@@ -4,6 +4,8 @@ def helper():",
+              "oldStart": 4,
+              "oldLines": 6,
+              "newStart": 4,
+              "newLines": 8,
+              "added": 2,
+              "removed": 0,
+              "whitespaceOnly": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "mapping": {
+    "previousSnapshotId": "20261026T054902Z-implementation-1bed0440a767",
+    "previousHead": "1bed0440a767bfecc009b26855b7338d3a9feab4",
+    "rangeDiff": true,
+    "commits": [
+      {
+        "sha": "1d0ee34e23c6f3175943971153258734bd7623ee",
+        "previousSha": "61a20197149a7c95cc2a1cceb17f58928a9ea9df",
+        "method": "range-diff",
+        "patchIdChanged": true,
+        "hunks": [
+          {
+            "id": "h1:876c092129f548ca",
+            "previousId": "h1:876c092129f548ca",
+            "match": "exact",
+            "similarity": 1
+          },
+          {
+            "id": "h1:1e47931148969d18",
+            "previousId": "h1:d3627b356da55633",
+            "match": "fuzzy",
+            "similarity": 0.892
+          },
+          {
+            "id": "h1:458813b091c620a1",
+            "previousId": "h1:458813b091c620a1",
+            "match": "exact",
+            "similarity": 1
+          }
+        ]
+      },
+      {
+        "sha": "4fc58d8656d1c0cd6a3e829c9b80c1e16770f3f1",
+        "previousSha": "6b6f34bcace2d0b4d05a7430b91c822923acab81",
+        "method": "patch-id",
+        "patchIdChanged": false
+      },
+      {
+        "sha": "a2cc42bac425ca6e3a85dc09c3fffebb5ecc1123",
+        "previousSha": "1bed0440a767bfecc009b26855b7338d3a9feab4",
+        "method": "patch-id",
+        "patchIdChanged": false
+      },
+      {
+        "sha": "3716845991d3812fe67ddad5239de49cb3ce5c28",
+        "previousSha": null,
+        "method": null,
+        "patchIdChanged": false
+      }
+    ],
+    "droppedCommits": [],
+    "hunks": [
+      {
+        "id": "h1:7ac0fd83f1f4efa9",
+        "previousId": "h1:7ac0fd83f1f4efa9",
+        "match": "exact",
+        "similarity": 1
+      },
+      {
+        "id": "h1:876c092129f548ca",
+        "previousId": "h1:876c092129f548ca",
+        "match": "exact",
+        "similarity": 1
+      },
+      {
+        "id": "h1:1e47931148969d18",
+        "previousId": "h1:d3627b356da55633",
+        "match": "fuzzy",
+        "similarity": 0.892
+      },
+      {
+        "id": "h1:65fa053271a715f0",
+        "previousId": "h1:65fa053271a715f0",
+        "match": "exact",
+        "similarity": 1
+      },
+      {
+        "id": "h1:02ef8092b58fef4f",
+        "previousId": "h1:458813b091c620a1",
+        "match": "fuzzy",
+        "similarity": 0.827
+      }
+    ],
+    "droppedHunks": []
+  }
+}

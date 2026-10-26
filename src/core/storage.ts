@@ -1,5 +1,5 @@
 // Storage layout and async interfaces; implemented over Obsidian's vault adapter, Node fs, or a native host.
-import { parseReviewState } from "./review-state";
+import { emptyReviewState, parseReviewState } from "./review-state";
 import { sortSnapshots } from "./snapshot";
 import { FINGERPRINT_VERSION, SNAPSHOT_SCHEMA_VERSION, type ReviewState, type Snapshot } from "./types";
 
@@ -92,6 +92,13 @@ export function recordReviewStateStore(adapter: TextFileAdapter, recordDir: stri
       await adapter.write(reviewStatePath(recordDir), JSON.stringify(state, null, 2) + "\n");
     },
   };
+}
+
+/** Read-modify-write: apply `mutate` to the state as it is on disk now, so other writers' check-offs survive. */
+export async function updateReviewState(store: ReviewStateStore, mutate: (state: ReviewState) => ReviewState): Promise<ReviewState> {
+  const next = mutate((await store.readReviewState()) ?? emptyReviewState());
+  await store.writeReviewState(next);
+  return next;
 }
 
 /** All snapshots of a record, oldest first. */

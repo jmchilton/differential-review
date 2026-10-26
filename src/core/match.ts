@@ -75,6 +75,22 @@ export function similarity(a: string[], b: string[]): number {
   return dice(common, ta.length, tb.length);
 }
 
+// contentHash identifies the changed lines, so a pair's similarity never changes; UIs re-derive on every check-off.
+const similarityCache = new Map<string, number>();
+const SIMILARITY_CACHE_LIMIT = 100_000;
+
+function cachedSimilarity(a: HunkRef, b: HunkRef): number {
+  if (!a.contentHash || !b.contentHash) return similarity(a.changed!, b.changed!);
+  const key = `${a.contentHash}\0${b.contentHash}`;
+  let sim = similarityCache.get(key);
+  if (sim === undefined) {
+    if (similarityCache.size >= SIMILARITY_CACHE_LIMIT) similarityCache.clear();
+    sim = similarity(a.changed!, b.changed!);
+    similarityCache.set(key, sim);
+  }
+  return sim;
+}
+
 /** One-to-one matching of old hunks to new hunks. */
 export function matchHunks(oldRefs: HunkRef[], newRefs: HunkRef[], threshold = FUZZY_THRESHOLD): MatchResult {
   const pairs: HunkPair[] = [];
@@ -104,7 +120,7 @@ export function matchHunks(oldRefs: HunkRef[], newRefs: HunkRef[], threshold = F
     if (usedNew.has(j)) return;
     oldRefs.forEach((o, i) => {
       if (usedOld.has(i) || o.kind !== r.kind || !sameFile(o, r) || !o.changed || !r.changed) return;
-      const sim = similarity(o.changed, r.changed);
+      const sim = cachedSimilarity(o, r);
       // A file has at most one meta unit, so two of the same file always pair.
       if (sim >= threshold || r.kind === "meta") candidates.push({ i, j, sim });
     });
