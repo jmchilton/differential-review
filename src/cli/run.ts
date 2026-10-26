@@ -53,7 +53,7 @@ export interface TargetFlags {
   /** Help for `snapshot --worktree` and `--base`. */
   worktreeHelp: string;
   baseHelp: string;
-  resolve(values: Values, worktree: string, worktreeDefaulted: boolean): Target;
+  resolve(values: Values, worktree: string, worktreeDefaulted: boolean, command?: string): Target;
 }
 
 export class UsageError extends Error {}
@@ -77,16 +77,16 @@ export const DIR_TARGET: TargetFlags = {
   --branch <name>   branch the review is for (default: the worktree's current branch)`,
   worktreeHelp: "the branch's worktree (default: current dir)",
   baseHelp: "diff base (default: the branch origin/HEAD points at, or --remote's)",
-  resolve(values, worktree) {
+  resolve(values, worktree, _worktreeDefaulted, command = "snapshot") {
     let branch = str(values, "branch");
     const dir = str(values, "dir");
-    if (!branch) {
+    if (!branch && !(dir && command !== "snapshot")) {
       branch = currentBranch(worktreeRoot(worktree)) ?? undefined;
       if (!branch) throw new UsageError(`HEAD is detached in ${worktree}; pass --branch <name>`);
     }
     return {
-      dir: dir ? resolve(dir) : join(gitCommonDir(worktreeRoot(worktree)), "differential-review", branch),
-      branch,
+      dir: dir ? resolve(dir) : join(gitCommonDir(worktreeRoot(worktree)), "differential-review", branch!),
+      branch: branch ?? "", // Stored-review reads and replies do not use a branch.
       base: (option, wt, remote) => chooseBase(wt, option, remote),
       branchCheck: "warn",
     };
@@ -295,7 +295,7 @@ Exit codes: 0 ok, 1 error, 2 usage error.`;
         return 0;
       }
       const worktree = str(values, "worktree");
-      const target = flags.resolve(values, worktree ?? io.cwd ?? process.cwd(), worktree === undefined);
+      const target = flags.resolve(values, worktree ?? io.cwd ?? process.cwd(), worktree === undefined, name);
       await command.run(values, io, target);
       return 0;
     } catch (e) {

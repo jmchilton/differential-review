@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Persistent source-range comments, thread placement across revisions, and independent human and agent replies.
+- Explicit-directory reads and replies work without a branch or Git checkout.
 - `threads` and `reply` CLI commands. Agents append responses without changing reviewer check-offs or thread resolution.
 
 ## 0.1.0 (unreleased)

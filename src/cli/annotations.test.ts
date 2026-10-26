@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { annotationPath, captureReviewOrigin, createReviewThread, reviewStatePath, snapshotPath } from "../core/index.js";
 import { fileDiff, snap } from "../core/test-helpers.js";
-import { createCli, type TargetFlags } from "./run.js";
+import { createCli, run, type TargetFlags } from "./run.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -41,6 +41,14 @@ describe("annotation CLI", () => {
     const threads = JSON.parse((await cli("threads", "--json")).out);
     expect(threads[0]).toMatchObject({ thread: { body: "Handle empty inputs" }, placement: { state: "unmapped" } });
     expect((await cli("reply", "--thread", "t-1", "--body", "I need the current branch to verify this.")).code).toBe(0);
+  });
+  it("reads and replies with an explicit dir outside a git worktree", async () => {
+    const { dir } = setup();
+    const out: string[] = [];
+    const io = { cwd: dir, out: (line: string) => out.push(line), err: (line: string) => { throw new Error(line); } };
+    expect(await run(["threads", "--dir", dir, "--json"], io)).toBe(0);
+    expect(JSON.parse(out[0])[0].thread.id).toBe("t-1");
+    expect(await run(["reply", "--dir", dir, "--thread", "t-1", "--body", "Checked without a running UI"], io)).toBe(0);
   });
   it("rejects missing threads, invalid snapshots and empty replies without writing", async () => {
     const { cli } = setup();

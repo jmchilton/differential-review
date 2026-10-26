@@ -75,7 +75,7 @@ differential-review reply --thread THREAD_ID --body-file response.md \
   --snapshot SNAPSHOT_ID --author "Agent"
 ```
 
-`threads` includes the original comment, source excerpt, replies and placement against the latest snapshot. `--snapshot <id>` selects an earlier target and `--open` selects unresolved threads. Without snapshots, it still returns the saved conversations with unmapped placements. `reply` accepts exactly one of `--body <text>` or `--body-file <path>`. Its optional `--snapshot` must name an existing snapshot. Both commands accept the usual target flags and `--json`.
+`threads` includes the original comment, source excerpt, replies and placement against the latest snapshot. `--snapshot <id>` selects an earlier target and `--open` selects unresolved threads. Without snapshots, it still returns the saved conversations with unmapped placements. `reply` accepts exactly one of `--body <text>` or `--body-file <path>`. Its optional `--snapshot` must name an existing snapshot. Both commands accept the usual target flags and `--json`. With `--dir`, reads and replies work outside a Git checkout or from a detached HEAD.
 
 The review dir also holds `annotations/threads/<id>.json` and `annotations/replies/<id>.json`. Keep these files with your review notes when using `--dir`. A reviewer UI creates and resolves threads. Each reply is a separate immutable file, so an agent response does not overwrite a simultaneous reviewer action.
 
