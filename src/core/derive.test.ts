@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveReview } from "./derive";
-import { changesSincePhase, latestSnapshot } from "./queries";
+import { changesSincePhase, latestSnapshot, summarizeSnapshot } from "./queries";
 import {
   emptyReviewState,
   markFileReviewed,
@@ -157,5 +157,60 @@ describe("phase queries", () => {
     expect(latestSnapshot([s2, s1], { phase: "implementation" })!.id).toBe(s1.id);
     expect(latestSnapshot([s2, s1])!.id).toBe(s2.id);
     expect(changesSincePhase([s1, s2], "polishing")).toBeNull();
+  });
+});
+
+describe("summarizeSnapshot", () => {
+  it("counts everything as new in a first snapshot", () => {
+    expect(summarizeSnapshot(s1)).toEqual({
+      previousSnapshotId: null,
+      commits: { same: 0, rebased: 0, changed: 0, new: 2, dropped: 0 },
+      hunks: { carried: 0, changed: 0, new: 2, dropped: 0 },
+      flaggedCommits: [
+        { sha: "c1".padEnd(40, "0"), subject: "Cache jobs", change: "new", differingHunks: null },
+        { sha: "c2".padEnd(40, "0"), subject: "Add helper", change: "new", differingHunks: null },
+      ],
+    });
+  });
+
+  it("separates rebased (same patch-id) from changed commits", () => {
+    expect(summarizeSnapshot(s2)).toMatchObject({
+      previousSnapshotId: s1.id,
+      commits: { same: 0, rebased: 1, changed: 1, new: 1, dropped: 0 },
+      hunks: { carried: 1, changed: 1, new: 1, dropped: 0 },
+    });
+    expect(summarizeSnapshot(s2).flaggedCommits.map((c) => [c.subject, c.change, c.differingHunks])).toEqual([
+      ["Cache jobs", "changed", 1],
+      ["New module", "new", null],
+    ]);
+  });
+});
+
+describe("commit sign-off across several snapshots", () => {
+  it("follows lineage back through a rebase to the signed-off version", () => {
+    const s3 = snap({
+      at: "2026-10-26T04:00:00.000Z",
+      phase: "polishing",
+      head: "ccc3",
+      diff: toolDiff("None", 95) + extra,
+      commits: [
+        commit("e1", "p1-again", "Cache jobs", hunkA("None")),
+        commit("e2", "p2", "Add helper", hunkB(95)),
+        commit("e3", "p3", "New module", extra),
+      ],
+      previous: s2,
+      rangeDiffPairs: [{ previousSha: "d1".padEnd(40, "0"), sha: "e1".padEnd(40, "0") }],
+    });
+    // Signed off only in s1; s2 is unreviewed in between.
+    const r = deriveReview(s3, reviewedEverythingIn(s1), [s1, s2, s3]);
+    expect(r.commits.map((c) => [c.subject, c.state, c.signoff?.snapshotId ?? null])).toEqual([
+      ["Cache jobs", "changed", s1.id],
+      ["Add helper", "reviewed", s1.id],
+      ["New module", "new", null],
+    ]);
+    expect(r.files[0].hunks.map((h) => [h.state, h.reviewedAs?.snapshotId])).toEqual([
+      ["changed", s1.id],
+      ["reviewed", s1.id],
+    ]);
   });
 });

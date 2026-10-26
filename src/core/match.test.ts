@@ -66,6 +66,8 @@ describe("matchHunks", () => {
       `diff --git a/x.png b/x.png\nindex 1111111..${blob} 100644\nBinary files a/x.png and b/x.png differ\n`;
     const r = matchHunks(refs(bin("2222222")), refs(bin("3333333")));
     expect(r.pairs.map((p) => p.match)).toEqual(["fuzzy"]);
+    expect(r.pairs[0].similarity).toBeGreaterThan(0.9);
+    expect(r.pairs[0].similarity).toBeLessThan(1);
   });
 });
 

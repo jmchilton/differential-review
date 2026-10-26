@@ -8,7 +8,9 @@ import { fileDiff } from "./test-helpers";
 const MIXED = readFileSync(new URL("./fixtures/mixed.diff", import.meta.url), "utf8");
 
 describe("sha256Hex", () => {
-  it.each(["", "abc", "ünïcødé ✓ 𝄞", "x".repeat(1000)])("matches node:crypto for %j", (text) => {
+  // 55/56 and 63/64 bytes straddle the one- vs two-block padding boundary.
+  const sizes = [55, 56, 63, 64, 119, 120].map((n) => "y".repeat(n));
+  it.each(["", "abc", "ünïcødé ✓ 𝄞", "x".repeat(1000), ...sizes])("matches node:crypto for %j", (text) => {
     expect(sha256Hex(text)).toBe(createHash("sha256").update(text, "utf8").digest("hex"));
   });
 });
@@ -65,6 +67,12 @@ describe("parseDiff", () => {
 
   it("returns nothing for an empty diff", () => {
     expect(parseDiff("")).toEqual([]);
+  });
+
+  it("splits lines on \\n only, so form feeds and lone CRs stay inside a line", () => {
+    const [file] = parseDiff(fileDiff("f.txt", [{ oldStart: 1, newStart: 1, lines: [" a\fb", "-mid\rcr", "+mid\rCR", " c\u0085"] }]));
+    expect(file.hunks).toHaveLength(1);
+    expect(file.hunks[0].changed).toEqual(["-mid\rcr", "+mid\rCR"]);
   });
 });
 

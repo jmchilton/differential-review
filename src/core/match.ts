@@ -103,14 +103,10 @@ export function matchHunks(oldRefs: HunkRef[], newRefs: HunkRef[], threshold = F
   newRefs.forEach((r, j) => {
     if (usedNew.has(j)) return;
     oldRefs.forEach((o, i) => {
-      if (usedOld.has(i) || o.kind !== r.kind || !sameFile(o, r)) return;
-      if (r.kind === "meta") {
-        candidates.push({ i, j, sim: 0 });
-        return;
-      }
-      if (!o.changed || !r.changed) return;
+      if (usedOld.has(i) || o.kind !== r.kind || !sameFile(o, r) || !o.changed || !r.changed) return;
       const sim = similarity(o.changed, r.changed);
-      if (sim >= threshold) candidates.push({ i, j, sim });
+      // A file has at most one meta unit, so two of the same file always pair.
+      if (sim >= threshold || r.kind === "meta") candidates.push({ i, j, sim });
     });
   });
   candidates.sort((a, b) => b.sim - a.sim || a.j - b.j || a.i - b.i);

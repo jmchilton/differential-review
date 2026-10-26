@@ -11,6 +11,7 @@ export const REVIEW_STATE_FILE = "review-state.json";
 export interface TextFileAdapter {
   exists(path: string): Promise<boolean>;
   read(path: string): Promise<string>;
+  /** Creates missing parent dirs. */
   write(path: string, data: string): Promise<void>;
   /** File names (not paths) directly in `dir`; [] when it doesn't exist. */
   listFiles(dir: string): Promise<string[]>;
@@ -57,14 +58,22 @@ export function parseSnapshot(json: unknown): Snapshot {
   return s as Snapshot;
 }
 
-export function recordSnapshotReader(adapter: TextFileAdapter, recordDir: string): SnapshotReader {
+/** Read-only file access: enough for snapshots and `readReviewState`, never for writing. */
+export type ReadOnlyFileAdapter = Pick<TextFileAdapter, "exists" | "read" | "listFiles">;
+
+export function recordSnapshotReader(adapter: Pick<TextFileAdapter, "read" | "listFiles">, recordDir: string): SnapshotReader {
   return {
     async listSnapshotIds() {
       const names = await adapter.listFiles(snapshotsDir(recordDir));
       return names.filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).sort();
     },
     async readSnapshot(id) {
-      return parseSnapshot(JSON.parse(await adapter.read(snapshotPath(recordDir, id))));
+      const path = snapshotPath(recordDir, id);
+      try {
+        return parseSnapshot(JSON.parse(await adapter.read(path)));
+      } catch (e) {
+        throw new Error(`unreadable snapshot ${path}: ${(e as Error).message}`);
+      }
     },
   };
 }

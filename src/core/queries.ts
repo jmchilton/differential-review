@@ -1,7 +1,7 @@
 // Phase-aware "what changed since snapshot X" queries.
 import { hunkRefs, matchHunks, toHunkMatches } from "./match";
 import { snapshotFiles, sortSnapshots } from "./snapshot";
-import type { HunkMatch, Phase, Snapshot, SnapshotCommit } from "./types";
+import type { CommitMapping, HunkMatch, HunkMatchKind, Phase, Snapshot, SnapshotCommit } from "./types";
 
 export interface LineageStep {
   snapshot: Snapshot;
@@ -94,4 +94,47 @@ export function changesSincePhase(snapshots: Snapshot[], phase: Phase, to?: Snap
   if (!target) return null;
   const from = latestSnapshot(snapshots, { phase, before: target });
   return from ? changesBetween(snapshots, from, target) : null;
+}
+
+export type CommitDelta = "same" | "rebased" | "changed" | "new";
+
+export type HunkDelta = "carried" | "changed" | "new";
+
+const HUNK_DELTA: Record<HunkMatchKind, HunkDelta> = { exact: "carried", moved: "carried", fuzzy: "changed", new: "new" };
+
+export interface SnapshotSummary {
+  previousSnapshotId: string | null;
+  commits: Record<CommitDelta | "dropped", number>;
+  hunks: Record<HunkDelta | "dropped", number>;
+  /** Changed and new commits in branch order; `differingHunks` counts a changed commit's hunks not carried. */
+  flaggedCommits: { sha: string; subject: string; change: "changed" | "new"; differingHunks: number | null }[];
+}
+
+function commitDelta(entry: CommitMapping | undefined): CommitDelta {
+  if (!entry?.method) return "new";
+  if (entry.patchIdChanged) return "changed";
+  return entry.method === "sha" ? "same" : "rebased";
+}
+
+/** What a snapshot changed relative to its previous one, from its stored mapping; all new for a first snapshot. */
+export function summarizeSnapshot(snapshot: Snapshot): SnapshotSummary {
+  const mapping = snapshot.mapping;
+  const commits = { same: 0, rebased: 0, changed: 0, new: 0, dropped: mapping?.droppedCommits.length ?? 0 };
+  const flaggedCommits: SnapshotSummary["flaggedCommits"] = [];
+  for (const commit of snapshot.commits) {
+    const entry = mapping?.commits.find((c) => c.sha === commit.sha);
+    const delta = commitDelta(entry);
+    commits[delta]++;
+    if (delta === "changed" || delta === "new") {
+      const differing = entry?.hunks?.filter((h) => HUNK_DELTA[h.match] !== "carried").length ?? null;
+      flaggedCommits.push({ sha: commit.sha, subject: commit.subject, change: delta, differingHunks: differing });
+    }
+  }
+  const hunks = { carried: 0, changed: 0, new: 0, dropped: mapping?.droppedHunks.length ?? 0 };
+  if (mapping) {
+    for (const h of mapping.hunks) hunks[HUNK_DELTA[h.match]]++;
+  } else {
+    hunks.new = snapshot.files.reduce((n, f) => n + f.hunks.length, 0);
+  }
+  return { previousSnapshotId: mapping?.previousSnapshotId ?? null, commits, hunks, flaggedCommits };
 }
