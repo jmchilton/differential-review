@@ -1,4 +1,5 @@
 // UI-agnostic review view model: what to show, in which state, under a baseline. Shared by review UIs.
+import { deriveThreads, type ReviewAnnotations, type ReviewThreadView } from "./annotations.js";
 import { structuredPatch } from "diff";
 import { deriveReview, type CommitReview, type HunkReview, type SnapshotReview } from "./derive.js";
 import type { ParsedFile, ParsedHunk } from "./diff.js";
@@ -13,6 +14,7 @@ export type Baseline = { kind: "review" } | { kind: "snapshot"; snapshotId: stri
 export interface ViewOptions {
   baseline?: Baseline;
   hideReviewed?: boolean;
+  annotations?: ReviewAnnotations;
 }
 
 export interface HunkView extends HunkReview {
@@ -55,6 +57,7 @@ export interface BaselineOption {
 }
 
 export interface ReviewView {
+  threads: ReviewThreadView[];
   /** The latest snapshot; check-offs are always recorded against it. */
   snapshot: Snapshot;
   snapshots: Snapshot[];
@@ -92,6 +95,8 @@ export function buildReviewView(snapshots: Snapshot[], state: ReviewState | null
   const changes = baselineSnapshot ? changesBetween(ordered, baselineSnapshot, current) : null;
   const hunkChange = new Map(changes?.hunks.map((h) => [h.id, h]));
   const commitChange = new Map(changes?.commits.map((c) => [c.sha, c.change]));
+  const threads = deriveThreads(options.annotations ?? { threads: [], replies: [] }, current, ordered);
+  const openHunks = new Set(threads.filter((t) => t.thread.status === "open").map((t) => t.placement.hunkId));
   const hidden = { files: 0, hunks: 0, commits: 0 };
 
   const parsed = new Map(snapshotFiles(current).map((f) => [f.path, f]));
@@ -101,7 +106,7 @@ export function buildReviewView(snapshots: Snapshot[], state: ReviewState | null
       const index = source.hunks[i];
       const match = hunkChange.get(h.id);
       const sinceBaseline = match ? HUNK_DELTA[match.match] : null;
-      const visible = !(hideReviewed && h.state === "reviewed") && sinceBaseline !== "carried";
+      const visible = openHunks.has(h.id) || (!(hideReviewed && h.state === "reviewed") && sinceBaseline !== "carried");
       if (!visible) hidden.hunks++;
       return {
         ...h,
@@ -138,6 +143,7 @@ export function buildReviewView(snapshots: Snapshot[], state: ReviewState | null
   });
 
   return {
+    threads,
     snapshot: current,
     snapshots: ordered,
     summary: summarizeSnapshot(current),

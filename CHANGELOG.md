@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Persistent source-range comments, thread placement across revisions, and independent human and agent replies.
+- `threads` and `reply` CLI commands. Agents append responses without changing reviewer check-offs or thread resolution.
+
 ## 0.1.0 (unreleased)
 
 First standalone release, extracted from [galaxy-brain](https://github.com/jmchilton/galaxy-brain).
