@@ -1,7 +1,7 @@
 // Node fs storage for the CLI: read-only file access plus immutable snapshot writes.
 import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { snapshotPath, type ReadOnlyFileAdapter, type Snapshot } from "../core";
+import { snapshotPath, type ReadOnlyFileAdapter, type Snapshot } from "../core/index.js";
 
 /** No `write`: the CLI cannot build a ReviewStateStore from it. */
 export const nodeReadAdapter: ReadOnlyFileAdapter = {
@@ -18,8 +18,8 @@ export const nodeReadAdapter: ReadOnlyFileAdapter = {
 };
 
 /** Write a new snapshot atomically; an existing file is an EEXIST error, never an overwrite. */
-export function writeSnapshot(recordDir: string, snapshot: Snapshot): string {
-  const path = snapshotPath(recordDir, snapshot.id);
+export function writeSnapshot(reviewDir: string, snapshot: Snapshot): string {
+  const path = snapshotPath(reviewDir, snapshot.id);
   // Not `*.json`, so readers never list a partial write.
   const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
   mkdirSync(dirname(path), { recursive: true });

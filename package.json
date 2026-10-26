@@ -1,21 +1,34 @@
 {
-  "name": "galaxy-brain-differential-review",
-  "private": true,
+  "name": "differential-review",
   "version": "0.1.0",
+  "description": "Review a branch once, then only what changed: hunk and commit check-offs that survive rebases, amends and force-pushes.",
+  "keywords": ["git", "code-review", "diff", "rebase", "range-diff", "patch-id"],
+  "license": "MIT",
+  "author": "John Chilton",
+  "repository": { "type": "git", "url": "git+https://github.com/jmchilton/differential-review.git" },
+  "homepage": "https://github.com/jmchilton/differential-review#readme",
+  "bugs": "https://github.com/jmchilton/differential-review/issues",
   "type": "module",
+  "engines": { "node": ">=22" },
+  "bin": { "differential-review": "dist/cli/main.js" },
+  "exports": {
+    ".": { "types": "./dist/core/index.d.ts", "default": "./dist/core/index.js" },
+    "./node": { "types": "./dist/cli/index.d.ts", "default": "./dist/cli/index.js" },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "!dist/**/*.test.*", "CHANGELOG.md"],
   "scripts": {
-    "build": "npm run typecheck && node esbuild.config.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.core.json",
-    "test": "vitest run"
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.core.json",
+    "test": "vitest run",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "diff": "9.0.0"
   },
   "devDependencies": {
     "@types/node": "26.6.5",
-    "esbuild": "0.28.2",
     "typescript": "7.0.2",
-    "vitest": "4.1.12",
-    "yaml": "2.9.1"
+    "vitest": "4.1.12"
   }
 }

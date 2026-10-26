@@ -1,7 +1,7 @@
 // Phase-aware "what changed since snapshot X" queries.
-import { hunkRefs, matchHunks, toHunkMatches } from "./match";
-import { snapshotFiles, sortSnapshots } from "./snapshot";
-import type { CommitMapping, HunkMatch, HunkMatchKind, Phase, Snapshot, SnapshotCommit } from "./types";
+import { hunkRefs, matchHunks, toHunkMatches } from "./match.js";
+import { snapshotFiles, sortSnapshots } from "./snapshot.js";
+import type { CommitMapping, HunkMatch, HunkMatchKind, Phase, Snapshot, SnapshotCommit } from "./types.js";
 
 export interface LineageStep {
   snapshot: Snapshot;

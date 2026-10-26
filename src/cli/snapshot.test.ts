@@ -6,20 +6,20 @@ import {
   emptyReviewState,
   markFileReviewed,
   readAllSnapshots,
-  recordReviewStateStore,
-  recordSnapshotReader,
   reviewStatePath,
+  reviewStateStore,
   signOffCommit,
   snapshotFiles,
+  snapshotReader,
   snapshotsDir,
   type ReviewState,
   type Snapshot,
-} from "../core";
-import { parseRangeDiff } from "./git";
-import { nodeReadAdapter, writeSnapshot } from "./node-storage";
-import { baseCandidates } from "./record";
-import { run } from "./run";
-import { isolateGit, numberedLines, pluginAdapter, TestRepo } from "./test-repo";
+} from "../core/index.js";
+import { parseRangeDiff } from "./git.js";
+import { nodeReadAdapter, writeSnapshot } from "./node-storage.js";
+import { baseCandidates } from "./base.js";
+import { run } from "./run.js";
+import { isolateGit, numberedLines, pluginAdapter, TestRepo } from "./test-repo.js";
 
 beforeAll(isolateGit);
 
@@ -36,34 +36,36 @@ async function cliIn(cwd: string | undefined, argv: string[]) {
 const cli = (...argv: string[]) => cliIn(undefined, argv);
 const firstLine = (text: string) => text.split("\n")[0];
 
-async function snapshot(repo: TestRepo, record: string, phase: string, ...extra: string[]) {
-  const r = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", phase, ...extra);
+/** Snapshot against `main` unless `extra` passes its own --base. */
+async function snapshot(repo: TestRepo, dir: string, phase: string, ...extra: string[]) {
+  const base = extra.includes("--base") ? [] : ["--base", "main"];
+  const r = await cli("snapshot", "--worktree", repo.dir, "--dir", dir, "--phase", phase, ...base, ...extra);
   expect(r.err.replace(/^warning: .*$/gm, "").trim()).toBe("");
   expect(r.code).toBe(0);
   return r;
 }
 
-async function snapshots(record: string): Promise<Snapshot[]> {
-  return readAllSnapshots(recordSnapshotReader(nodeReadAdapter, record));
+async function snapshots(dir: string): Promise<Snapshot[]> {
+  return readAllSnapshots(snapshotReader(nodeReadAdapter, dir));
 }
 
 /** What a plugin does: check off every file and sign off every commit of a snapshot. */
-async function reviewEverything(record: string, s: Snapshot): Promise<ReviewState> {
+async function reviewEverything(dir: string, s: Snapshot): Promise<ReviewState> {
   let state = emptyReviewState();
   for (const f of s.files) state = markFileReviewed(state, s, f.path, "2026-10-26T00:00:00Z");
   for (const c of s.commits) state = signOffCommit(state, s, c.sha, "2026-10-26T00:00:00Z");
-  await recordReviewStateStore(pluginAdapter, record).writeReviewState(state);
+  await reviewStateStore(pluginAdapter, dir).writeReviewState(state);
   return state;
 }
 
-async function review(record: string) {
-  const all = await snapshots(record);
-  const state = (await recordReviewStateStore(pluginAdapter, record).readReviewState())!;
+async function review(dir: string) {
+  const all = await snapshots(dir);
+  const state = (await reviewStateStore(pluginAdapter, dir).readReviewState())!;
   return deriveReview(all.at(-1)!, state, all);
 }
 
 /** main with a 60-line module; feature changes lines 10 and 40 in one commit. */
-function setup(frontmatter: Record<string, string> | null = { upstream_base_branch: "main" }) {
+function setup() {
   const repo = new TestRepo();
   repo.write("lib/mod.py", numberedLines(60));
   repo.commit("base");
@@ -71,18 +73,18 @@ function setup(frontmatter: Record<string, string> | null = { upstream_base_bran
   repo.edit("lib/mod.py", "x_10 = 10\n", "x_10 = 1000\n");
   repo.edit("lib/mod.py", "x_40 = 40\n", "x_40 = 4000\n");
   repo.commit("Change two values");
-  return { repo, record: repo.record("feature", frontmatter) };
+  return { repo, dir: repo.reviewDir };
 }
 
 describe("snapshot CLI", () => {
-  it("writes an immutable snapshot of the branch against the record's base", async () => {
-    const { repo, record } = setup();
-    const r = await snapshot(repo, record, "implementation");
-    expect(firstLine(r.out)).toMatch(/^created .*\/differential-review\/snapshots\/\d{8}T\d{6}Z-implementation-[0-9a-f]{12}\.json$/);
+  it("writes an immutable snapshot of the branch against its base", async () => {
+    const { repo, dir } = setup();
+    const r = await snapshot(repo, dir, "implementation");
+    expect(firstLine(r.out)).toMatch(/^created .*\/review\/snapshots\/\d{8}T\d{6}Z-implementation-[0-9a-f]{12}\.json$/);
     expect(r.out).toContain("first snapshot: 1 commit, 1 file, 2 hunks");
-    const [s] = await snapshots(record);
-    expect(s).toMatchObject({ phase: "implementation", repo: "demo", branch: "feature", head: repo.head(), previousSnapshotId: null, mapping: null });
-    expect(s.base).toMatchObject({ name: "main", source: "upstream_base_branch", ref: "main" });
+    const [s] = await snapshots(dir);
+    expect(s).toMatchObject({ phase: "implementation", repo: null, branch: "feature", head: repo.head(), previousSnapshotId: null, mapping: null });
+    expect(s.base).toMatchObject({ name: "main", source: "option", ref: "main" });
     expect(s.files.map((f) => [f.path, f.hunks.length])).toEqual([["lib/mod.py", 2]]);
     expect(s.commits).toHaveLength(1);
     expect(s.commits[0].patchId).toMatch(/^[0-9a-f]{40}$/);
@@ -92,36 +94,36 @@ describe("snapshot CLI", () => {
   });
 
   it("is a no-op when re-run on the same head and phase, and never overwrites", async () => {
-    const { repo, record } = setup();
-    const first = await snapshot(repo, record, "implementation");
+    const { repo, dir } = setup();
+    const first = await snapshot(repo, dir, "implementation");
     const path = firstLine(first.out).replace(/^created /, "");
     const bytes = readFileSync(path, "utf8");
-    const again = await snapshot(repo, record, "implementation");
+    const again = await snapshot(repo, dir, "implementation");
     expect(firstLine(again.out)).toBe(`exists ${path}`);
-    expect(readdirSync(snapshotsDir(record))).toHaveLength(1);
+    expect(readdirSync(snapshotsDir(dir))).toHaveLength(1);
     expect(readFileSync(path, "utf8")).toBe(bytes);
-    const [s] = await snapshots(record);
-    expect(() => writeSnapshot(record, s)).toThrow(/EEXIST/);
-    expect(readdirSync(snapshotsDir(record))).toEqual([`${s.id}.json`]);
+    const [s] = await snapshots(dir);
+    expect(() => writeSnapshot(dir, s)).toThrow(/EEXIST/);
+    expect(readdirSync(snapshotsDir(dir))).toEqual([`${s.id}.json`]);
 
-    await snapshot(repo, record, "hardening");
-    expect(readdirSync(snapshotsDir(record))).toHaveLength(2);
+    await snapshot(repo, dir, "hardening");
+    expect(readdirSync(snapshotsDir(dir))).toHaveLength(2);
   });
 
   it("snapshots again when HEAD returns to an earlier head, but not on a same-head rerun", async () => {
-    const { repo, record } = setup();
+    const { repo, dir } = setup();
     const first = repo.head();
-    await snapshot(repo, record, "implementation");
-    await snapshot(repo, record, "hardening");
-    expect(firstLine((await snapshot(repo, record, "implementation")).out)).toMatch(/^exists /);
+    await snapshot(repo, dir, "implementation");
+    await snapshot(repo, dir, "hardening");
+    expect(firstLine((await snapshot(repo, dir, "implementation")).out)).toMatch(/^exists /);
 
     repo.write("lib/extra.py", "x = 1\n");
     repo.commit("Extra");
-    await snapshot(repo, record, "hardening");
+    await snapshot(repo, dir, "hardening");
     repo.git("reset", "-q", "--hard", first);
-    const back = await snapshot(repo, record, "hardening");
+    const back = await snapshot(repo, dir, "hardening");
     expect(firstLine(back.out)).toMatch(/^created /);
-    expect((await snapshots(record)).map((s) => [s.phase, s.head === first])).toEqual([
+    expect((await snapshots(dir)).map((s) => [s.phase, s.head === first])).toEqual([
       ["implementation", true],
       ["hardening", true],
       ["hardening", false],
@@ -130,41 +132,41 @@ describe("snapshot CLI", () => {
   });
 
   it("names an unreadable snapshot file instead of failing opaquely", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
-    writeFileSync(`${snapshotsDir(record)}/20261026T999999Z-hardening-truncated.json`, '{"schemaVersion": 1, "ki');
-    const r = await cli("list", "--record", record);
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
+    writeFileSync(`${snapshotsDir(dir)}/20261026T999999Z-hardening-truncated.json`, '{"schemaVersion": 1, "ki');
+    const r = await cli("list", "--dir", dir);
     expect(r.code).toBe(1);
     expect(r.err).toMatch(/unreadable snapshot .*truncated\.json/);
   });
 
   it("never creates or modifies review-state.json", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
-    expect((await cli("status", "--record", record)).code).toBe(0);
-    expect((await cli("list", "--record", record)).code).toBe(0);
-    expect(existsSync(reviewStatePath(record))).toBe(false);
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
+    expect((await cli("status", "--dir", dir)).code).toBe(0);
+    expect((await cli("list", "--dir", dir)).code).toBe(0);
+    expect(existsSync(reviewStatePath(dir))).toBe(false);
 
-    const [s] = await snapshots(record);
-    await reviewEverything(record, s);
-    const before = readFileSync(reviewStatePath(record), "utf8");
+    const [s] = await snapshots(dir);
+    await reviewEverything(dir, s);
+    const before = readFileSync(reviewStatePath(dir), "utf8");
     repo.edit("lib/mod.py", "x_40 = 4000\n", "x_40 = 4001\n");
     repo.commit("Change two values", "--amend");
-    await snapshot(repo, record, "hardening");
-    expect((await cli("status", "--record", record)).code).toBe(0);
-    expect((await cli("status", "--record", record, "--json")).code).toBe(0);
-    expect(readFileSync(reviewStatePath(record), "utf8")).toBe(before);
+    await snapshot(repo, dir, "hardening");
+    expect((await cli("status", "--dir", dir)).code).toBe(0);
+    expect((await cli("status", "--dir", dir, "--json")).code).toBe(0);
+    expect(readFileSync(reviewStatePath(dir), "utf8")).toBe(before);
   });
 
   it("summarizes the change since the previous snapshot, as text and stable JSON", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
     repo.edit("lib/mod.py", "x_40 = 4000\n", "x_40 = 4001\n");
     repo.commit("Change two values", "--amend");
     repo.write("lib/extra.py", "x = 1\n");
     repo.commit("Add extra");
 
-    const r = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", "hardening", "--json");
+    const r = await cli("snapshot", "--worktree", repo.dir, "--dir", dir, "--phase", "hardening", "--base", "main", "--json");
     expect(r.code).toBe(0);
     const json = JSON.parse(r.out);
     expect(Object.keys(json)).toEqual(["status", "id", "path", "summary", "warnings"]);
@@ -177,10 +179,10 @@ describe("snapshot CLI", () => {
       ["new", null],
     ]);
 
-    const text = (await snapshot(repo, record, "hardening")).out.split("\n");
+    const text = (await snapshot(repo, dir, "hardening")).out.split("\n");
     expect(text[0]).toBe(`exists ${json.path}`);
     expect(text.slice(2)).toEqual([
-      `  since ${(await snapshots(record))[0].id}:`,
+      `  since ${(await snapshots(dir))[0].id}:`,
       "    commits: 0 same, 0 rebased, 1 changed, 1 new, 0 dropped",
       "    hunks:   1 carried, 1 changed, 1 new, 0 dropped",
       expect.stringMatching(/^    changed [0-9a-f]{12} Change two values \(1 differing hunk\)$/),
@@ -189,12 +191,12 @@ describe("snapshot CLI", () => {
   });
 
   it("produces identical diffs and patch-ids regardless of the user's diff config", async () => {
-    const { repo, record } = setup();
+    const { repo, dir } = setup();
     repo.write("lib/blank.py", "a = 1\n\nb = 2\n\nc = 3\n");
     repo.commit("Blank lines");
     repo.edit("lib/blank.py", "b = 2\n", "b = 20\n");
     repo.commit("Edit between blank lines");
-    await snapshot(repo, record, "implementation");
+    await snapshot(repo, dir, "implementation");
     const hostile = {
       "diff.noprefix": "true",
       "diff.mnemonicPrefix": "true",
@@ -211,9 +213,9 @@ describe("snapshot CLI", () => {
     };
     for (const [k, v] of Object.entries(hostile)) repo.git("config", k, v);
     // From a subdir, where diff.relative would otherwise narrow the diff.
-    expect((await cli("snapshot", "--worktree", `${repo.dir}/lib`, "--record", record, "--phase", "hardening")).code).toBe(0);
+    expect((await cli("snapshot", "--worktree", `${repo.dir}/lib`, "--dir", dir, "--phase", "hardening", "--base", "main")).code).toBe(0);
 
-    const [clean, configured] = await snapshots(record);
+    const [clean, configured] = await snapshots(dir);
     expect(configured.diff).toBe(clean.diff);
     expect(configured.commits.map((c) => [c.patchId, c.diff])).toEqual(clean.commits.map((c) => [c.patchId, c.diff]));
     expect(configured.mapping!.commits.map((c) => c.method)).toEqual(["sha", "sha", "sha"]);
@@ -226,140 +228,123 @@ describe("snapshot CLI", () => {
     repo.git("checkout", "-q", "-b", "feature");
     repo.write("img.bin", "\x00\x09\x02");
     repo.commit("Binary edit");
-    const record = repo.record("feature", { upstream_base_branch: "main" });
-    await snapshot(repo, record, "implementation");
+    const dir = repo.reviewDir;
+    await snapshot(repo, dir, "implementation");
     repo.write("img.bin", "\x00\x09\x03");
     repo.commit("Binary edit", "--amend");
-    await snapshot(repo, record, "hardening");
+    await snapshot(repo, dir, "hardening");
 
-    const [a, b] = await snapshots(record);
+    const [a, b] = await snapshots(dir);
     expect(a.commits[0].patchId).toMatch(/^[0-9a-f]{40}$/);
     expect(b.commits[0].patchId).not.toBe(a.commits[0].patchId);
     expect(b.mapping!.commits[0]).toMatchObject({ patchIdChanged: true });
   });
 
-  it("requires --base when the record has no frontmatter", async () => {
-    const { repo, record } = setup(null);
-    const r = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", "implementation");
-    expect(r.code).toBe(1);
-    expect(r.err).toMatch(/upstream_base_branch.*--base/);
-    expect(existsSync(snapshotsDir(record))).toBe(false);
-    await snapshot(repo, record, "implementation", "--base", "main");
-    expect((await snapshots(record))[0].base).toMatchObject({ source: "override", ref: "main" });
-  });
-
   it("rejects unknown phases", async () => {
-    const { repo, record } = setup();
-    const r = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", "rebase");
+    const { repo, dir } = setup();
+    const r = await cli("snapshot", "--worktree", repo.dir, "--dir", dir, "--phase", "rebase");
     expect(r.code).toBe(2);
     expect(r.err).toMatch(/--phase must be one of implementation, hardening, polishing, revision, review,/);
-    expect(existsSync(snapshotsDir(record))).toBe(false);
-  });
-
-  it("refuses a record dir without index.md instead of creating it", async () => {
-    const { repo, record } = setup();
-    const typo = `${record}_typo`;
-    for (const argv of [
-      ["snapshot", "--worktree", repo.dir, "--record", typo, "--phase", "implementation", "--base", "main"],
-      ["list", "--record", typo],
-      ["status", "--record", typo],
-    ]) {
-      const r = await cli(...argv);
-      expect(r.code).toBe(1);
-      expect(r.err).toMatch(/no record at .*_typo \(no index\.md\)/);
-    }
-    expect(existsSync(typo)).toBe(false);
-  });
-
-  it("explains a worktree that is not a git repo, and an unresolvable base", async () => {
-    const { repo, record } = setup();
-    const notGit = await cli("snapshot", "--worktree", repo.vault, "--record", record, "--phase", "implementation");
-    expect(notGit.code).toBe(1);
-    expect(notGit.err).toMatch(/is not inside a git worktree; pass --worktree/);
-
-    const badBase = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", "implementation", "--base", "nope");
-    expect(badBase.code).toBe(1);
-    expect(badBase.err).toMatch(/could not resolve base nope .*tried nope\. Fetch it/);
-  });
-
-  it("defaults --worktree to the current dir only when it is on the record's branch", async () => {
-    const { repo, record } = setup();
-    const ok = await cliIn(`${repo.dir}/lib`, ["snapshot", "--record", record, "--phase", "implementation"]);
-    expect(ok.code).toBe(0);
-    expect(ok.err).toBe("");
-
-    repo.git("checkout", "-q", "main");
-    const wrong = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "hardening"]);
-    expect(wrong.code).toBe(1);
-    expect(wrong.err).toMatch(/^error: worktree is on main, record is feature \(in .*\); pass --worktree/);
-    repo.git("checkout", "-q", "--detach", "feature");
-    const detached = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "hardening"]);
-    expect(detached.code).toBe(1);
-    expect(detached.err).toMatch(/^error: HEAD is detached at [0-9a-f]{12}; snapshotting it for record feature/);
-    expect(await snapshots(record)).toHaveLength(1);
-  });
-
-  it("only warns about a detached HEAD or another branch when --worktree is explicit", async () => {
-    const { repo, record } = setup();
-    repo.git("checkout", "-q", "--detach");
-    const r = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", "implementation");
-    expect(r.code).toBe(0);
-    expect(r.err).toMatch(/^warning: HEAD is detached at [0-9a-f]{12}; snapshotting it for record feature$/);
-    expect((await snapshots(record))[0].head).toBe(repo.head());
-  });
-
-  it("snapshots a PR head into a review record without the branch check or touching the worktree", async () => {
-    const { repo } = setup();
-    const prHead = repo.head();
-    const record = repo.record("42", null, "reviews");
-    repo.git("checkout", "-q", "-b", "pr_42_review_0");
-    repo.write("lib/fix.py", "fix = 1\n");
-    const reviewHead = repo.commit("Review fix");
-
-    const noBase = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "review", "--head", "feature"]);
-    expect(noBase.code).toBe(1);
-    expect(noBase.err).toMatch(/^error: review record 42 has no base: pass --base <the PR's base branch>/);
-
-    const r = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "review", "--base", "main", "--head", "feature"]);
-    expect(r.code).toBe(0);
-    expect(r.err).toBe("");
-    const [s] = await snapshots(record);
-    expect(s.head).toBe(prHead);
-    expect(s.phase).toBe("review");
-    expect(s.files.map((f) => f.path)).toEqual(["lib/mod.py"]);
-    expect(repo.head()).toBe(reviewHead);
-    expect(repo.git("symbolic-ref", "--short", "HEAD").trim()).toBe("pr_42_review_0");
-
-    const missing = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "review", "--base", "main", "--head", "nope"]);
-    expect(missing.code).toBe(1);
-    expect(missing.err).toMatch(/^error: --head nope is not a commit in .*; fetch it first/);
+    expect(existsSync(snapshotsDir(dir))).toBe(false);
   });
 
   it("snapshots again on a same-head rerun against a different base", async () => {
-    const { repo, record } = setup();
+    const { repo, dir } = setup();
     const older = repo.git("rev-parse", "main").trim();
     repo.git("checkout", "-q", "main");
     repo.write("lib/upstream.py", "u = 1\n");
     repo.commit("Upstream");
     repo.git("checkout", "-q", "feature");
     repo.git("merge", "-q", "--no-edit", "main");
-    await snapshot(repo, record, "implementation", "--base", older);
-    const rerun = await snapshot(repo, record, "implementation", "--base", "main");
+    await snapshot(repo, dir, "implementation", "--base", older);
+    const rerun = await snapshot(repo, dir, "implementation", "--base", "main");
     expect(firstLine(rerun.out)).toMatch(/^created /);
-    expect((await snapshots(record)).map((s) => s.files.length)).toEqual([2, 1]);
+    expect((await snapshots(dir)).map((s) => s.files.length)).toEqual([2, 1]);
+  });
+
+
+  it("defaults the branch to the worktree's and the review dir to the git common dir", async () => {
+    const { repo } = setup();
+    const r = await cliIn(`${repo.dir}/lib`, ["snapshot", "--phase", "implementation", "--base", "main"]);
+    expect(r.code).toBe(0);
+    expect(r.err).toBe("");
+    expect(firstLine(r.out)).toMatch(new RegExp(`^created ${repo.git("rev-parse", "--path-format=absolute", "--git-common-dir").trim()}/differential-review/feature/snapshots/`));
+    expect((await cliIn(repo.dir, ["list"])).out).toMatch(/-implementation-[0-9a-f]{12}  1 commit, 1 file, 2 hunks vs main$/);
+
+    const other = await cliIn(repo.dir, ["snapshot", "--phase", "hardening", "--base", "main", "--branch", "other"]);
+    expect(other.code).toBe(0);
+    expect(other.err).toBe("warning: worktree is on feature, branch is other");
+    expect(firstLine(other.out)).toMatch(/\/differential-review\/other\/snapshots\//);
+  });
+
+  it("needs --branch on a detached HEAD unless --dir and --branch are given", async () => {
+    const { repo, dir } = setup();
+    repo.git("checkout", "-q", "--detach");
+    const r = await cliIn(repo.dir, ["snapshot", "--phase", "implementation", "--base", "main"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/^usage error: HEAD is detached in .*; pass --branch <name>/);
+    const ok = await cli("snapshot", "--worktree", repo.dir, "--dir", dir, "--branch", "feature", "--phase", "implementation", "--base", "main");
+    expect(ok.code).toBe(0);
+    expect(ok.err).toMatch(/^warning: HEAD is detached at [0-9a-f]{12}; snapshotting it for branch feature$/);
+  });
+
+  it("defaults the base to the branch origin/HEAD points at", async () => {
+    const { repo, dir } = setup();
+    const unset = await cli("snapshot", "--worktree", repo.dir, "--dir", dir, "--phase", "implementation");
+    expect(unset.code).toBe(1);
+    expect(unset.err).toMatch(/no --base and origin\/HEAD is not set; pass --base <ref> or run `git remote set-head origin --auto`/);
+    expect(existsSync(snapshotsDir(dir))).toBe(false);
+
+    repo.git("remote", "add", "origin", repo.dir);
+    repo.git("fetch", "-q", "origin");
+    repo.git("remote", "set-head", "origin", "main");
+    expect((await cli("snapshot", "--worktree", repo.dir, "--dir", dir, "--phase", "implementation")).code).toBe(0);
+    expect((await snapshots(dir))[0].base).toMatchObject({ name: "main", source: "remote-head", ref: "origin/main" });
+  });
+
+  it("snapshots another head without the branch check or touching the worktree", async () => {
+    const { repo, dir } = setup();
+    const prHead = repo.head();
+    repo.git("checkout", "-q", "-b", "pr_42_review_0");
+    repo.write("lib/fix.py", "fix = 1\n");
+    const reviewHead = repo.commit("Review fix");
+
+    const r = await cliIn(repo.dir, ["snapshot", "--dir", dir, "--branch", "pr-42", "--phase", "review", "--base", "main", "--head", "feature"]);
+    expect(r.code).toBe(0);
+    expect(r.err).toBe("");
+    const [s] = await snapshots(dir);
+    expect(s).toMatchObject({ head: prHead, phase: "review", branch: "pr-42" });
+    expect(s.files.map((f) => f.path)).toEqual(["lib/mod.py"]);
+    expect(repo.head()).toBe(reviewHead);
+    expect(repo.git("symbolic-ref", "--short", "HEAD").trim()).toBe("pr_42_review_0");
+
+    const missing = await cliIn(repo.dir, ["snapshot", "--dir", dir, "--branch", "pr-42", "--phase", "review", "--base", "main", "--head", "nope"]);
+    expect(missing.code).toBe(1);
+    expect(missing.err).toMatch(/^error: --head nope is not a commit in .*; fetch it first/);
+  });
+
+  it("explains a worktree that is not a git repo, and an unresolvable base", async () => {
+    const { repo, dir } = setup();
+    const notGit = await cli("snapshot", "--worktree", repo.root, "--phase", "implementation", "--base", "main");
+    expect(notGit.code).toBe(1);
+    expect(notGit.err).toMatch(/is not inside a git worktree; pass --worktree/);
+
+    const badBase = await cli("snapshot", "--worktree", repo.dir, "--dir", dir, "--phase", "implementation", "--base", "nope");
+    expect(badBase.code).toBe(1);
+    expect(badBase.err).toMatch(/could not resolve base nope .*tried refs\/heads\/nope, nope\. Fetch it/);
   });
 
   it("treats bad flags and commands as usage errors with per-command help", async () => {
-    const { record } = setup();
-    for (const argv of [["status", "--record", record, "--bogus"], ["list", "--record", record, "--phase", "x"], ["frobnicate"], ["list", "extra"]]) {
+    const { dir } = setup();
+    for (const argv of [["status", "--dir", dir, "--bogus"], ["list", "--dir", dir, "--phase", "x"], ["frobnicate"], ["list", "extra"]]) {
       const r = await cli(...argv);
       expect(r.code).toBe(2);
       expect(r.err).toMatch(/^usage error: /);
     }
     const help = await cli("snapshot", "--help");
     expect(help.code).toBe(0);
-    expect(help.out).toMatch(/^usage: differential-review snapshot --record <dir> --phase/);
-    expect(help.out).toContain("--worktree <dir>  the branch's worktree (default: current dir, which must be on a branch record's branch)");
+    expect(help.out).toMatch(/^usage: differential-review snapshot \[--dir <dir>\] \[--branch <name>\] \[--worktree <dir>\] --phase/);
+    expect(help.out).toContain("--dir <dir>       review dir (default: <git common dir>/differential-review/<branch>)");
     expect(help.out).toContain("--head <rev>");
     const top = await cli("--help");
     expect(top.code).toBe(0);
@@ -367,73 +352,68 @@ describe("snapshot CLI", () => {
     expect((await cli()).code).toBe(2);
   });
 
-  it("prefers origin/<base> for upstream bases and the local branch for parents", async () => {
-    const { repo, record } = setup();
-    repo.git("remote", "add", "origin", repo.dir);
-    repo.git("fetch", "-q", "origin");
-    await snapshot(repo, record, "implementation");
-    expect((await snapshots(record))[0].base.ref).toBe("origin/main");
-    expect(baseCandidates({ name: "dev", source: "parent_branch" }, ["jmchilton", "origin"])).toEqual([
+  it("orders base candidates remote-first, or local-first when asked", () => {
+    expect(baseCandidates({ name: "dev", source: "option" }, ["jmchilton", "origin"])).toEqual(["origin/dev", "jmchilton/dev", "refs/heads/dev", "dev"]);
+    expect(baseCandidates({ name: "dev", source: "parent", localFirst: true }, ["jmchilton", "origin"], "jmchilton")).toEqual([
       "refs/heads/dev",
-      "origin/dev",
       "jmchilton/dev",
+      "origin/dev",
     ]);
-    expect(baseCandidates({ name: "dev", source: "override" }, ["origin"])).toEqual(["origin/dev", "dev"]);
   });
 });
 
-describe("differential review across agent iterations", () => {
+describe("differential review across iterations", () => {
   it("keeps hunk check-offs and commit sign-off through a rebase that only shifts line numbers", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
-    await reviewEverything(record, (await snapshots(record))[0]);
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
+    await reviewEverything(dir, (await snapshots(dir))[0]);
 
     repo.git("checkout", "-q", "main");
     repo.write("lib/mod.py", "# header\n# more\n" + repo.read("lib/mod.py"));
     repo.commit("Upstream adds a header");
     repo.git("checkout", "-q", "feature");
     repo.git("rebase", "-q", "main");
-    await snapshot(repo, record, "hardening");
+    await snapshot(repo, dir, "hardening");
 
-    const [s1, s2] = await snapshots(record);
+    const [s1, s2] = await snapshots(dir);
     expect(s2.files[0].hunks.map((h) => h.newStart)).not.toEqual(s1.files[0].hunks.map((h) => h.newStart));
     expect(s2.commits[0].sha).not.toBe(s1.commits[0].sha);
     expect(s2.mapping!.commits[0]).toMatchObject({ method: "patch-id", patchIdChanged: false });
-    const r = await review(record);
+    const r = await review(dir);
     expect(r.files[0].hunks.map((h) => h.state)).toEqual(["reviewed", "reviewed"]);
     expect(r.commits.map((c) => c.state)).toEqual(["reviewed"]);
   });
 
   it("keeps hunk check-offs when a rebase changes context, but flags the commit with no differing hunks", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
-    await reviewEverything(record, (await snapshots(record))[0]);
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
+    await reviewEverything(dir, (await snapshots(dir))[0]);
 
     repo.git("checkout", "-q", "main");
     repo.edit("lib/mod.py", "x_38 = 38\n", "x_38 = 38  # upstream tweak\n");
     repo.commit("Upstream touches nearby context");
     repo.git("checkout", "-q", "feature");
     repo.git("rebase", "-q", "main");
-    await snapshot(repo, record, "hardening");
+    await snapshot(repo, dir, "hardening");
 
-    const r = await review(record);
+    const r = await review(dir);
     expect(r.files[0].hunks.map((h) => h.state)).toEqual(["reviewed", "reviewed"]);
     expect(r.commits[0]).toMatchObject({ state: "changed", differingHunks: [] });
   });
 
   it("shows only the amended hunk as changed and flags the commit with just that hunk", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
-    await reviewEverything(record, (await snapshots(record))[0]);
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
+    await reviewEverything(dir, (await snapshots(dir))[0]);
 
     repo.edit("lib/mod.py", "x_40 = 4000\n", "x_40 = 4001\n");
     repo.commit("Change two values", "--amend");
-    await snapshot(repo, record, "hardening");
+    await snapshot(repo, dir, "hardening");
 
-    const [, s2] = await snapshots(record);
+    const [, s2] = await snapshots(dir);
     expect(s2.mapping!.commits[0]).toMatchObject({ method: "range-diff", patchIdChanged: true });
     expect(s2.mapping!.hunks.map((h) => h.match)).toEqual(["exact", "fuzzy"]);
-    const r = await review(record);
+    const r = await review(dir);
     expect(r.files[0].hunks.map((h) => h.state)).toEqual(["reviewed", "changed"]);
     expect(r.files[0].state).toBe("changed");
     expect(r.commits[0].state).toBe("changed");
@@ -441,15 +421,15 @@ describe("differential review across agent iterations", () => {
   });
 
   it("treats an indentation-only amend as a commit change", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
-    await reviewEverything(record, (await snapshots(record))[0]);
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
+    await reviewEverything(dir, (await snapshots(dir))[0]);
 
     repo.edit("lib/mod.py", "x_40 = 4000\n", "    x_40 = 4000\n");
     repo.commit("Change two values", "--amend");
-    await snapshot(repo, record, "hardening");
+    await snapshot(repo, dir, "hardening");
 
-    const r = await review(record);
+    const r = await review(dir);
     expect(r.commits[0].state).toBe("changed");
     expect(r.files[0].hunks.map((h) => h.state)).toEqual(["reviewed", "changed"]);
   });
@@ -463,29 +443,29 @@ describe("differential review across agent iterations", () => {
     repo.write("a.py", "import os\n" + repo.read("a.py"));
     repo.write("b.py", "import os\n" + repo.read("b.py"));
     repo.commit("Import os twice");
-    const record = repo.record("feature", { upstream_base_branch: "main" });
-    await snapshot(repo, record, "implementation");
+    const dir = repo.reviewDir;
+    await snapshot(repo, dir, "implementation");
 
-    const [s] = await snapshots(record);
+    const [s] = await snapshots(dir);
     const [a, b] = s.files.map((f) => f.hunks[0]);
     expect(a.contentHash).toBe(b.contentHash);
     expect(a.id).not.toBe(b.id);
     const state = markFileReviewed(emptyReviewState(), s, "a.py", "2026-10-26T00:00:00Z");
-    await recordReviewStateStore(pluginAdapter, record).writeReviewState(state);
-    const r = await review(record);
+    await reviewStateStore(pluginAdapter, dir).writeReviewState(state);
+    const r = await review(dir);
     expect(r.files.map((f) => [f.path, f.state])).toEqual([["a.py", "reviewed"], ["b.py", "new"]]);
   });
 
   it("reports what hardening added since implementation via status", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
-    await reviewEverything(record, (await snapshots(record))[0]);
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
+    await reviewEverything(dir, (await snapshots(dir))[0]);
     repo.write("lib/extra.py", "def extra():\n    return 1\n");
     repo.commit("Add extra");
-    await snapshot(repo, record, "hardening");
+    await snapshot(repo, dir, "hardening");
 
-    const r = await cli("status", "--record", record);
-    const [, s2] = await snapshots(record);
+    const r = await cli("status", "--dir", dir);
+    const [, s2] = await snapshots(dir);
     expect(r.out.split("\n")).toEqual([
       `${s2.id} (hardening @ ${s2.head.slice(0, 12)})`,
       "  hunks:   2 reviewed, 0 changed, 1 new",
@@ -498,14 +478,14 @@ describe("differential review across agent iterations", () => {
   });
 
   it("carries text-hunk check-offs through a rename and shows the rename itself as new", async () => {
-    const { repo, record } = setup();
-    await snapshot(repo, record, "implementation");
-    await reviewEverything(record, (await snapshots(record))[0]);
+    const { repo, dir } = setup();
+    await snapshot(repo, dir, "implementation");
+    await reviewEverything(dir, (await snapshots(dir))[0]);
     repo.git("mv", "lib/mod.py", "lib/renamed.py");
     repo.commit("Rename module");
-    await snapshot(repo, record, "hardening");
+    await snapshot(repo, dir, "hardening");
 
-    const r = await review(record);
+    const r = await review(dir);
     expect(r.files.map((f) => [f.path, f.hunks.map((h) => [h.kind, h.state])])).toEqual([
       ["lib/renamed.py", [["meta", "new"], ["text", "reviewed"], ["text", "reviewed"]]],
     ]);

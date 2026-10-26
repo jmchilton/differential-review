@@ -1,6 +1,6 @@
-// Reviewer-owned check-off state. Only plugins write it; the snapshot CLI never does.
-import { commitKey } from "./snapshot";
-import { REVIEW_STATE_SCHEMA_VERSION, type ReviewState, type Snapshot } from "./types";
+// Reviewer-owned check-off state. Only review UIs write it; the snapshot CLI never does.
+import { commitKey } from "./snapshot.js";
+import { REVIEW_STATE_SCHEMA_VERSION, type ReviewState, type Snapshot } from "./types.js";
 
 export function emptyReviewState(): ReviewState {
   return { schemaVersion: REVIEW_STATE_SCHEMA_VERSION, kind: "differential-review-state", updatedAt: null, hunks: {}, commits: {} };

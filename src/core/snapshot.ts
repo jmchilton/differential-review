@@ -1,6 +1,6 @@
 // Snapshot construction from git-derived inputs, and the mapping to the previous snapshot.
-import { parseDiff, toFileIndex, type ParsedFile } from "./diff";
-import { hunkRefs, matchHunks, toHunkMatches } from "./match";
+import { parseDiff, toFileIndex, type ParsedFile } from "./diff.js";
+import { hunkRefs, matchHunks, toHunkMatches } from "./match.js";
 import {
   FINGERPRINT_VERSION,
   SNAPSHOT_SCHEMA_VERSION,
@@ -11,7 +11,7 @@ import {
   type SnapshotBase,
   type SnapshotCommit,
   type SnapshotMapping,
-} from "./types";
+} from "./types.js";
 
 export type CommitInput = Omit<SnapshotCommit, "files">;
 
@@ -34,7 +34,7 @@ export interface SnapshotInput {
   rangeDiffPairs: CommitPair[] | null;
 }
 
-/** `20261026T031500Z-hardening-3bf56e17e9b1`: sortable, colon-free (Obsidian sync, mobile). */
+/** `20261026T031500Z-hardening-3bf56e17e9b1`: sortable, colon-free (portable file names). */
 export function snapshotId(createdAt: string, phase: Phase, head: string): string {
   const stamp = createdAt.replace(/\.\d+Z$/, "Z").replace(/[-:]/g, "");
   return `${stamp}-${phase}-${head.slice(0, 12)}`;

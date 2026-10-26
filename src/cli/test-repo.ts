@@ -1,10 +1,10 @@
-// Temp git repos and branch records for CLI integration tests, isolated from user git config.
+// Temp git repos and review dirs for CLI integration tests, isolated from user git config.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { TextFileAdapter } from "../core";
-import { nodeReadAdapter } from "./node-storage";
+import type { TextFileAdapter } from "../core/index.js";
+import { nodeReadAdapter } from "./node-storage.js";
 
 export const GIT_ENV = {
   GIT_CONFIG_GLOBAL: "/dev/null",
@@ -24,13 +24,16 @@ export function isolateGit(): void {
 }
 
 export class TestRepo {
+  /** Temp dir holding the repo; not a git worktree. */
+  readonly root: string;
   readonly dir: string;
-  readonly vault: string;
+  /** A review dir outside the repo. */
+  readonly reviewDir: string;
 
   constructor() {
-    const root = mkdtempSync(join(tmpdir(), "differential-review-"));
-    this.dir = join(root, "repo");
-    this.vault = join(root, "vault");
+    this.root = mkdtempSync(join(tmpdir(), "differential-review-"));
+    this.dir = join(this.root, "repo");
+    this.reviewDir = join(this.root, "review");
     mkdirSync(this.dir);
     this.git("init", "-q", "-b", "main");
     this.git("config", "commit.gpgsign", "false");
@@ -66,22 +69,13 @@ export class TestRepo {
   head(): string {
     return this.git("rev-parse", "HEAD").trim();
   }
-
-  /** A vault branch (or review) record dir with optional index.md frontmatter. */
-  record(branch: string, frontmatter: Record<string, string> | null, kind: "branches" | "reviews" = "branches"): string {
-    const dir = join(this.vault, "repositories", "demo", kind, "active", branch);
-    mkdirSync(dir, { recursive: true });
-    const fm = frontmatter ? `---\n${Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`).join("\n")}\n---\n` : "";
-    writeFileSync(join(dir, "index.md"), `${fm}# ${branch}\n`);
-    return dir;
-  }
 }
 
 export function numberedLines(n: number, prefix = "x"): string {
   return Array.from({ length: n }, (_, i) => `${prefix}_${i + 1} = ${i + 1}`).join("\n") + "\n";
 }
 
-/** What a plugin's adapter does; the CLI itself only has `nodeReadAdapter`. */
+/** What a review UI's adapter does; the CLI itself only has `nodeReadAdapter`. */
 export const pluginAdapter: TextFileAdapter = {
   ...nodeReadAdapter,
   async write(path, data) {

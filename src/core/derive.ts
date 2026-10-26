@@ -1,8 +1,8 @@
 // Derive reviewed / new / changed-since-reviewed at hunk, file and commit level.
-import { hunkRefs, matchHunks, type HunkRef } from "./match";
-import { commitLineage } from "./queries";
-import { commitFiles, commitKey, snapshotFiles } from "./snapshot";
-import type { CommitSignoff, HunkKind, ReviewState, ReviewStatus, Snapshot } from "./types";
+import { hunkRefs, matchHunks, type HunkRef } from "./match.js";
+import { commitLineage } from "./queries.js";
+import { commitFiles, commitKey, snapshotFiles } from "./snapshot.js";
+import type { CommitSignoff, HunkKind, ReviewState, ReviewStatus, Snapshot } from "./types.js";
 
 export interface HunkReview {
   id: string;

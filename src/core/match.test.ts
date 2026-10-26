@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { parseDiff } from "./diff";
-import { FUZZY_THRESHOLD, hunkRefs, matchHunks, similarity } from "./match";
-import { fileDiff } from "./test-helpers";
+import { parseDiff } from "./diff.js";
+import { FUZZY_THRESHOLD, hunkRefs, matchHunks, similarity } from "./match.js";
+import { fileDiff } from "./test-helpers.js";
 
 function refs(diff: string) {
   return hunkRefs(parseDiff(diff));

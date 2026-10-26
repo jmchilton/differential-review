@@ -1,6 +1,6 @@
 // Git plumbing for snapshots. Diff options are pinned so fingerprints don't depend on user config.
 import { execFileSync } from "node:child_process";
-import type { CommitInput, CommitPair } from "../core";
+import type { CommitInput, CommitPair } from "../core/index.js";
 
 // Git's defaults, pinned against diff.* config (patch-ids hash the diff text, context included).
 const DIFF_FLAGS = [
@@ -82,6 +82,16 @@ export function remotes(cwd: string): string[] {
 
 export function currentBranch(cwd: string): string | null {
   return tryGit(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"])?.trim() || null;
+}
+
+/** `<remote>/<branch>` that `refs/remotes/<remote>/HEAD` points at, e.g. `origin/main`. */
+export function remoteHead(cwd: string, remote: string): string | null {
+  return tryGit(cwd, ["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`])?.trim() || null;
+}
+
+/** The repository's shared `.git` dir, the same from every linked worktree. */
+export function gitCommonDir(cwd: string): string {
+  return git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim();
 }
 
 export function isDirty(cwd: string): boolean {

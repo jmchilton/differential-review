@@ -1,26 +1,19 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseDiff, toFileIndex } from "./diff";
-import { emptyReviewState, markHunksReviewed } from "./review-state";
-import { commitFiles, snapshotFiles } from "./snapshot";
+import { parseDiff, toFileIndex } from "./diff.js";
+import { emptyReviewState, markHunksReviewed } from "./review-state.js";
+import { commitFiles, snapshotFiles } from "./snapshot.js";
 import {
-  isReviewableRecordKind,
   readAllSnapshots,
-  recordReviewStateStore,
-  recordSnapshotReader,
   reviewStatePath,
+  reviewStateStore,
   parseSnapshot,
   snapshotPath,
+  snapshotReader,
   type TextFileAdapter,
   updateReviewState,
-} from "./storage";
-import { commit, fileDiff, snap } from "./test-helpers";
-
-describe("isReviewableRecordKind", () => {
-  it("accepts branch and review records only", () => {
-    expect(["branches", "reviews", "issues", "projects"].filter(isReviewableRecordKind)).toEqual(["branches", "reviews"]);
-  });
-});
+} from "./storage.js";
+import { commit, fileDiff, snap } from "./test-helpers.js";
 
 function memoryAdapter(files: Record<string, string> = {}): TextFileAdapter & { files: Record<string, string> } {
   return {
@@ -42,30 +35,30 @@ function memoryAdapter(files: Record<string, string> = {}): TextFileAdapter & { 
   };
 }
 
-const RECORD = "repositories/galaxy/branches/active/feature";
+const DIR = "reviews/feature";
 
-describe("record storage", () => {
-  it("lays files out under <record>/differential-review/", () => {
-    expect(snapshotPath(RECORD, "x")).toBe(`${RECORD}/differential-review/snapshots/x.json`);
-    expect(reviewStatePath(RECORD + "/")).toBe(`${RECORD}/differential-review/review-state.json`);
+describe("review dir storage", () => {
+  it("lays files out under the review dir", () => {
+    expect(snapshotPath(DIR, "x")).toBe(`${DIR}/snapshots/x.json`);
+    expect(reviewStatePath(DIR + "/")).toBe(`${DIR}/review-state.json`);
   });
 
   it("lists and reads snapshots oldest first", async () => {
     const a = snap({ at: "2026-10-26T00:00:00.000Z", phase: "implementation", head: "a1", diff: fileDiff("f", [{ oldStart: 1, newStart: 1, lines: ["+x"] }]) });
     const b = snap({ at: "2026-10-26T01:00:00.000Z", phase: "hardening", head: "b1", diff: a.diff, previous: a });
     const adapter = memoryAdapter({
-      [snapshotPath(RECORD, b.id)]: JSON.stringify(b),
-      [snapshotPath(RECORD, a.id)]: JSON.stringify(a),
-      [`${RECORD}/differential-review/snapshots/notes.txt`]: "ignored",
+      [snapshotPath(DIR, b.id)]: JSON.stringify(b),
+      [snapshotPath(DIR, a.id)]: JSON.stringify(a),
+      [`${DIR}/snapshots/notes.txt`]: "ignored",
     });
-    const reader = recordSnapshotReader(adapter, RECORD);
+    const reader = snapshotReader(adapter, DIR);
     expect(await reader.listSnapshotIds()).toEqual([a.id, b.id]);
     expect((await readAllSnapshots(reader)).map((s) => s.phase)).toEqual(["implementation", "hardening"]);
   });
 
   it("reads null before the first write, then round-trips review state", async () => {
     const adapter = memoryAdapter();
-    const store = recordReviewStateStore(adapter, RECORD);
+    const store = reviewStateStore(adapter, DIR);
     expect(await store.readReviewState()).toBeNull();
     await store.writeReviewState(emptyReviewState());
     expect(await store.readReviewState()).toEqual(emptyReviewState());
@@ -75,7 +68,7 @@ describe("record storage", () => {
     const a = snap({ at: "2026-10-26T00:00:00.000Z", phase: "implementation", head: "a1", diff: fileDiff("f", [{ oldStart: 1, newStart: 1, lines: ["+x"] }, { oldStart: 9, newStart: 9, lines: ["+y"] }]) });
     const [h1, h2] = a.files[0].hunks.map((h) => h.id);
     const adapter = memoryAdapter();
-    const store = recordReviewStateStore(adapter, RECORD);
+    const store = reviewStateStore(adapter, DIR);
     expect(await updateReviewState(store, (s) => s)).toEqual(emptyReviewState());
     await store.writeReviewState(markHunksReviewed(emptyReviewState(), a, [h1], "t1"));
     const next = await updateReviewState(store, (s) => markHunksReviewed(s, a, [h2], "t2"));
@@ -84,8 +77,8 @@ describe("record storage", () => {
   });
 
   it("rejects files that are not snapshots", async () => {
-    const adapter = memoryAdapter({ [snapshotPath(RECORD, "bad")]: JSON.stringify({ kind: "nope" }) });
-    await expect(recordSnapshotReader(adapter, RECORD).readSnapshot("bad")).rejects.toThrow();
+    const adapter = memoryAdapter({ [snapshotPath(DIR, "bad")]: JSON.stringify({ kind: "nope" }) });
+    await expect(snapshotReader(adapter, DIR).readSnapshot("bad")).rejects.toThrow();
   });
 });
 

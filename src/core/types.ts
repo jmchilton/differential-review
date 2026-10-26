@@ -5,7 +5,7 @@ export const REVIEW_STATE_SCHEMA_VERSION = 1;
 // Prefix on every fingerprint; review-state keeps fingerprints forever, so a new algorithm needs a new prefix.
 export const FINGERPRINT_VERSION = "h1";
 
-// Factory phases agents snapshot after (BRANCH_FACTORY.md: implement, harden, polish).
+// Phases a branch is snapshotted after: implement, harden, polish, then revisions; `review` is a round on someone else's PR.
 export const PHASES = ["implementation", "hardening", "polishing", "revision", "review"] as const;
 export type Phase = (typeof PHASES)[number];
 
@@ -50,10 +50,11 @@ export interface FileIndex {
   hunks: HunkIndex[];
 }
 
-export type BaseSource = "parent_branch" | "upstream_base_branch" | "override";
+/** How the base was chosen, e.g. `option` (--base) or `remote-head`; integrations add their own. */
+export type BaseSource = string;
 
 export interface SnapshotBase {
-  /** Branch name as recorded (no remote prefix), or the --base value. */
+  /** Base branch name (no remote prefix), or the --base value. */
   name: string;
   source: BaseSource;
   /** Git ref actually used, e.g. `origin/dev`. */

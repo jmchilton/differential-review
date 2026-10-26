@@ -1,11 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { emptyReviewState, markFileReviewed, signOffCommit } from "./review-state";
-import { snapshotFiles } from "./snapshot";
-import { parseSnapshot } from "./storage";
-import { commit, fileDiff, snap } from "./test-helpers";
-import type { ReviewState, Snapshot } from "./types";
-import { buildReviewView, commitHunks, findHunk, hunkPatch, interdiffPatch, previousHunk } from "./view";
+import { emptyReviewState, markFileReviewed, signOffCommit } from "./review-state.js";
+import { snapshotFiles } from "./snapshot.js";
+import { parseSnapshot } from "./storage.js";
+import { commit, fileDiff, snap } from "./test-helpers.js";
+import type { ReviewState, Snapshot } from "./types.js";
+import { buildReviewView, commitHunks, findHunk, hunkPatch, interdiffPatch, previousHunk } from "./view.js";
 
 // make-view-fixtures.sh: implementation; rebase + amend + new commit (hardening); pure rebase (polishing).
 const DIR = new URL("./fixtures/view-fixtures/", import.meta.url);

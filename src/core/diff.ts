@@ -1,7 +1,7 @@
 // Git unified-diff parsing (via jsdiff) and hunk fingerprinting.
 import { parsePatch } from "diff";
-import { sha256Hex } from "./sha256";
-import { FINGERPRINT_VERSION, type FileIndex, type FileStatus, type HunkIndex } from "./types";
+import { sha256Hex } from "./sha256.js";
+import { FINGERPRINT_VERSION, type FileIndex, type FileStatus, type HunkIndex } from "./types.js";
 
 export interface ParsedHunk extends HunkIndex {
   /** Raw hunk body lines with their ` `/`+`/`-`/`\` markers. */

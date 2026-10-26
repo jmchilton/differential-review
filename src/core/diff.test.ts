@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { normalizeChangedLines, parseDiff, toFileIndex } from "./diff";
-import { sha256Hex } from "./sha256";
-import { fileDiff } from "./test-helpers";
+import { normalizeChangedLines, parseDiff, toFileIndex } from "./diff.js";
+import { sha256Hex } from "./sha256.js";
+import { fileDiff } from "./test-helpers.js";
 
 const MIXED = readFileSync(new URL("./fixtures/mixed.diff", import.meta.url), "utf8");
 

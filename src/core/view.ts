@@ -1,11 +1,11 @@
-// UI-agnostic review view model: what to show, in which state, under a baseline. Shared by plugin UIs.
+// UI-agnostic review view model: what to show, in which state, under a baseline. Shared by review UIs.
 import { structuredPatch } from "diff";
-import { deriveReview, type CommitReview, type HunkReview, type SnapshotReview } from "./derive";
-import type { ParsedFile, ParsedHunk } from "./diff";
-import { changesBetween, summarizeSnapshot, type CommitChangeKind, type HunkDelta, type SnapshotSummary } from "./queries";
-import { emptyReviewState } from "./review-state";
-import { commitFiles, snapshotFiles, sortSnapshots } from "./snapshot";
-import type { FileStatus, ReviewState, ReviewStatus, Snapshot, SnapshotCommit } from "./types";
+import { deriveReview, type CommitReview, type HunkReview, type SnapshotReview } from "./derive.js";
+import type { ParsedFile, ParsedHunk } from "./diff.js";
+import { changesBetween, summarizeSnapshot, type CommitChangeKind, type HunkDelta, type SnapshotSummary } from "./queries.js";
+import { emptyReviewState } from "./review-state.js";
+import { commitFiles, snapshotFiles, sortSnapshots } from "./snapshot.js";
+import type { FileStatus, ReviewState, ReviewStatus, Snapshot, SnapshotCommit } from "./types.js";
 
 /** "Since my last review" (review state only), or only what changed since an earlier snapshot. */
 export type Baseline = { kind: "review" } | { kind: "snapshot"; snapshotId: string };

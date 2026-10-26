@@ -1,6 +1,6 @@
-// Human-readable CLI output; concise enough to paste into an agent debrief.
-import type { Snapshot, SnapshotReview, SnapshotSummary } from "../core";
-import type { SnapshotResult } from "./snapshot";
+// Human-readable CLI output; concise enough to paste into a debrief or PR comment.
+import type { Snapshot, SnapshotReview, SnapshotSummary } from "../core/index.js";
+import type { SnapshotResult } from "./snapshot.js";
 
 const short = (sha: string) => sha.slice(0, 12);
 // A --base given as a full SHA reads better abbreviated.

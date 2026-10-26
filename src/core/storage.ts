@@ -1,20 +1,13 @@
-// Storage layout and async interfaces; implemented over Obsidian's vault adapter, Node fs, or a native host.
-import { emptyReviewState, parseReviewState } from "./review-state";
-import { sortSnapshots } from "./snapshot";
-import { FINGERPRINT_VERSION, SNAPSHOT_SCHEMA_VERSION, type ReviewState, type Snapshot } from "./types";
+// Storage layout and async interfaces, implemented over whatever file access the host has (Node fs, an app's vault).
+import { emptyReviewState, parseReviewState } from "./review-state.js";
+import { sortSnapshots } from "./snapshot.js";
+import { FINGERPRINT_VERSION, SNAPSHOT_SCHEMA_VERSION, type ReviewState, type Snapshot } from "./types.js";
 
-export const REVIEW_DIR = "differential-review";
+// A review dir holds one branch's review: `snapshots/<id>.json` and `review-state.json`.
 export const SNAPSHOTS_DIR = "snapshots";
 export const REVIEW_STATE_FILE = "review-state.json";
-/** Vault record kinds (`repositories/<repo>/<kind>/...`) that hold a differential review. */
-export const REVIEWABLE_RECORD_KINDS = ["branches", "reviews"] as const;
-export type ReviewableRecordKind = (typeof REVIEWABLE_RECORD_KINDS)[number];
 
-export function isReviewableRecordKind(kind: string): kind is ReviewableRecordKind {
-  return (REVIEWABLE_RECORD_KINDS as readonly string[]).includes(kind);
-}
-
-/** Minimal text-file access, relative to whatever root the host uses (vault root, filesystem). */
+/** Minimal text-file access, relative to whatever root the host uses. */
 export interface TextFileAdapter {
   exists(path: string): Promise<boolean>;
   read(path: string): Promise<string>;
@@ -24,13 +17,13 @@ export interface TextFileAdapter {
   listFiles(dir: string): Promise<string[]>;
 }
 
-/** Read side of snapshots; plugins only ever read them. */
+/** Read side of snapshots; review UIs only ever read them. */
 export interface SnapshotReader {
   listSnapshotIds(): Promise<string[]>;
   readSnapshot(id: string): Promise<Snapshot>;
 }
 
-/** Reviewer-owned state; implemented by plugins, never by the snapshot CLI. */
+/** Reviewer-owned state; implemented by review UIs, never by the snapshot CLI. */
 export interface ReviewStateStore {
   readReviewState(): Promise<ReviewState | null>;
   writeReviewState(state: ReviewState): Promise<void>;
@@ -40,20 +33,16 @@ function join(...parts: string[]): string {
   return parts.filter(Boolean).join("/").replace(/\/+/g, "/");
 }
 
-export function reviewDir(recordDir: string): string {
-  return join(recordDir, REVIEW_DIR);
+export function snapshotsDir(reviewDir: string): string {
+  return join(reviewDir, SNAPSHOTS_DIR);
 }
 
-export function snapshotsDir(recordDir: string): string {
-  return join(recordDir, REVIEW_DIR, SNAPSHOTS_DIR);
+export function snapshotPath(reviewDir: string, id: string): string {
+  return join(snapshotsDir(reviewDir), `${id}.json`);
 }
 
-export function snapshotPath(recordDir: string, id: string): string {
-  return join(snapshotsDir(recordDir), `${id}.json`);
-}
-
-export function reviewStatePath(recordDir: string): string {
-  return join(recordDir, REVIEW_DIR, REVIEW_STATE_FILE);
+export function reviewStatePath(reviewDir: string): string {
+  return join(reviewDir, REVIEW_STATE_FILE);
 }
 
 /** Validate parsed snapshot JSON; throws on unknown kinds or newer schema versions. */
@@ -68,14 +57,14 @@ export function parseSnapshot(json: unknown): Snapshot {
 /** Read-only file access: enough for snapshots and `readReviewState`, never for writing. */
 export type ReadOnlyFileAdapter = Pick<TextFileAdapter, "exists" | "read" | "listFiles">;
 
-export function recordSnapshotReader(adapter: Pick<TextFileAdapter, "read" | "listFiles">, recordDir: string): SnapshotReader {
+export function snapshotReader(adapter: Pick<TextFileAdapter, "read" | "listFiles">, reviewDir: string): SnapshotReader {
   return {
     async listSnapshotIds() {
-      const names = await adapter.listFiles(snapshotsDir(recordDir));
+      const names = await adapter.listFiles(snapshotsDir(reviewDir));
       return names.filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).sort();
     },
     async readSnapshot(id) {
-      const path = snapshotPath(recordDir, id);
+      const path = snapshotPath(reviewDir, id);
       try {
         return parseSnapshot(JSON.parse(await adapter.read(path)));
       } catch (e) {
@@ -86,17 +75,17 @@ export function recordSnapshotReader(adapter: Pick<TextFileAdapter, "read" | "li
 }
 
 /** Read-only access for tools that must never write review state (the CLI). */
-export async function readReviewState(adapter: Pick<TextFileAdapter, "exists" | "read">, recordDir: string): Promise<ReviewState | null> {
-  const path = reviewStatePath(recordDir);
+export async function readReviewState(adapter: Pick<TextFileAdapter, "exists" | "read">, reviewDir: string): Promise<ReviewState | null> {
+  const path = reviewStatePath(reviewDir);
   if (!(await adapter.exists(path))) return null;
   return parseReviewState(JSON.parse(await adapter.read(path)));
 }
 
-export function recordReviewStateStore(adapter: TextFileAdapter, recordDir: string): ReviewStateStore {
+export function reviewStateStore(adapter: TextFileAdapter, reviewDir: string): ReviewStateStore {
   return {
-    readReviewState: () => readReviewState(adapter, recordDir),
+    readReviewState: () => readReviewState(adapter, reviewDir),
     async writeReviewState(state) {
-      await adapter.write(reviewStatePath(recordDir), JSON.stringify(state, null, 2) + "\n");
+      await adapter.write(reviewStatePath(reviewDir), JSON.stringify(state, null, 2) + "\n");
     },
   };
 }
@@ -108,7 +97,7 @@ export async function updateReviewState(store: ReviewStateStore, mutate: (state:
   return next;
 }
 
-/** All snapshots of a record, oldest first. */
+/** All snapshots in a review dir, oldest first. */
 export async function readAllSnapshots(reader: SnapshotReader): Promise<Snapshot[]> {
   const ids = await reader.listSnapshotIds();
   return sortSnapshots(await Promise.all(ids.map((id) => reader.readSnapshot(id))));

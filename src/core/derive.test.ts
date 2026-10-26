@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { deriveReview } from "./derive";
-import { changesSincePhase, latestSnapshot, summarizeSnapshot } from "./queries";
+import { deriveReview } from "./derive.js";
+import { changesSincePhase, latestSnapshot, summarizeSnapshot } from "./queries.js";
 import {
   emptyReviewState,
   markFileReviewed,
@@ -9,8 +9,8 @@ import {
   revokeCommitSignoff,
   signOffCommit,
   unmarkHunks,
-} from "./review-state";
-import { commit, fileDiff, snap } from "./test-helpers";
+} from "./review-state.js";
+import { commit, fileDiff, snap } from "./test-helpers.js";
 
 const NOW = "2026-10-26T01:00:00Z";
 const hunkA = (arg: string) => fileDiff("lib/tool.py", [

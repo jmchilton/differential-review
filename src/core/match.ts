@@ -1,7 +1,7 @@
 // Cross-snapshot hunk matching: exact fingerprint, then moved (same content), then fuzzy within a file.
 import { diffArrays, diffChars } from "diff";
-import type { ParsedFile } from "./diff";
-import type { HunkKind, HunkMatch, HunkMatchKind } from "./types";
+import type { ParsedFile } from "./diff.js";
+import type { HunkKind, HunkMatch, HunkMatchKind } from "./types.js";
 
 /** Minimum similarity for a fuzzy match to count as "changed" rather than unrelated. */
 export const FUZZY_THRESHOLD = 0.6;

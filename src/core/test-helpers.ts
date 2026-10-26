@@ -1,6 +1,6 @@
 // Builders for synthetic git diffs and snapshots in core unit tests.
-import { buildSnapshot, type CommitInput, type CommitPair } from "./snapshot";
-import type { Phase, Snapshot } from "./types";
+import { buildSnapshot, type CommitInput, type CommitPair } from "./snapshot.js";
+import type { Phase, Snapshot } from "./types.js";
 
 export interface HunkSpec {
   oldStart: number;
@@ -31,7 +31,7 @@ export function snap(
   return buildSnapshot({
     createdAt: opts.at,
     phase: opts.phase,
-    repo: "galaxy",
+    repo: "demo",
     branch: "feature",
     head: opts.head.padEnd(40, "0"),
     base: BASE,
