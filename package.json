@@ -1,0 +1,21 @@
+{
+  "name": "galaxy-brain-differential-review",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "npm run typecheck && node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.core.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "diff": "9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.12",
+    "yaml": "2.9.1"
+  }
+}

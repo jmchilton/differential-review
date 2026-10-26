@@ -1,0 +1,50 @@
+diff --git a/a.txt b/a.txt
+index 0ff3bbb9c8bba2291654cd64067fa417ff54c508..c9fbe27248c0d863ce3b012ffad4a5d378bb66ab 100644
+--- a/a.txt
++++ b/a.txt
+@@ -2,7 +2,7 @@
+ 2
+ 3
+ 4
+-5
++five
+ 6
+ 7
+ 8
+@@ -12,7 +12,7 @@
+ 12
+ 13
+ 14
+-15
++fifteen
+ 16
+ 17
+ 18
+diff --git a/bin.dat b/bin.dat
+index d5d0b8b4c4c9e936890870f6799cfbb5ba984470..4a270318359d8c2a960136495bceeae9eee22424 100644
+Binary files a/bin.dat and b/bin.dat differ
+diff --git a/del.txt b/del.txt
+deleted file mode 100644
+index 286c5f5776916d7d7d5849988ca9d83e722cf9c2..0000000000000000000000000000000000000000
+--- a/del.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-gone
+diff --git a/empty.txt b/empty.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/mode.sh b/mode.sh
+old mode 100644
+new mode 100755
+diff --git a/nonl.txt b/nonl.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..20cbb4d89224e1ed724b7feaf5c4f4479e25212a
+--- /dev/null
++++ b/nonl.txt
+@@ -0,0 +1 @@
++no newline
+\ No newline at end of file
+diff --git a/ren.txt b/renamed.txt
+similarity index 100%
+rename from ren.txt
+rename to renamed.txt
