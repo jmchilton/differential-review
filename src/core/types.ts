@@ -6,7 +6,7 @@ export const REVIEW_STATE_SCHEMA_VERSION = 1;
 export const FINGERPRINT_VERSION = "h1";
 
 // Factory phases agents snapshot after (BRANCH_FACTORY.md: implement, harden, polish).
-export const PHASES = ["implementation", "hardening", "polishing"] as const;
+export const PHASES = ["implementation", "hardening", "polishing", "revision"] as const;
 export type Phase = (typeof PHASES)[number];
 
 export function isPhase(value: string): value is Phase {

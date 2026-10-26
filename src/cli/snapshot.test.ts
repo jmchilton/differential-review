@@ -252,7 +252,7 @@ describe("snapshot CLI", () => {
     const { repo, record } = setup();
     const r = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", "rebase");
     expect(r.code).toBe(2);
-    expect(r.err).toMatch(/--phase must be one of implementation, hardening, polishing/);
+    expect(r.err).toMatch(/--phase must be one of implementation, hardening, polishing, revision,/);
     expect(existsSync(snapshotsDir(record))).toBe(false);
   });
 
