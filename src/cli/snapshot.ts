@@ -9,8 +9,8 @@ import {
   type Phase,
   type Snapshot,
 } from "../core";
-import { branchCommits, commitExists, currentBranch, diff, git, isDirty, mergeBase, rangeDiff } from "./git";
-import { nodeAdapter, writeSnapshot } from "./node-storage";
+import { branchCommits, commitExists, currentBranch, diff, git, isDirty, mergeBase, rangeDiff, worktreeRoot } from "./git";
+import { nodeReadAdapter, writeSnapshot } from "./node-storage";
 import { chooseBase, readRecord, resolveBaseRef } from "./record";
 
 export interface SnapshotOptions {
@@ -38,43 +38,55 @@ function previousRangeDiff(worktree: string, previous: Snapshot, newRange: strin
   }
 }
 
+/** A snapshot of this head and phase since the head last changed; reruns reuse it. */
+function rerunOf(existing: Snapshot[], head: string, phase: Phase): Snapshot | undefined {
+  for (let i = existing.length - 1; i >= 0 && existing[i].head === head; i--) {
+    if (existing[i].phase === phase) return existing[i];
+  }
+  return undefined;
+}
+
+function nextCreatedAt(previous: Snapshot | null, now: Date): string {
+  // Keep snapshots strictly ordered even if the clock runs behind the latest one.
+  if (previous && now.toISOString() <= previous.createdAt) return new Date(Date.parse(previous.createdAt) + 1000).toISOString();
+  return now.toISOString();
+}
+
 export async function createSnapshot(opts: SnapshotOptions): Promise<SnapshotResult> {
-  const worktree = resolve(opts.worktree);
   const recordDir = resolve(opts.record);
-  const warnings: string[] = [];
   const record = readRecord(recordDir);
+  const worktree = worktreeRoot(resolve(opts.worktree));
   const head = git(worktree, ["rev-parse", "HEAD"]).trim();
 
-  const existing = await readAllSnapshots(recordSnapshotReader(nodeAdapter, recordDir));
-  const same = existing.find((s) => s.head === head && s.phase === opts.phase);
-  if (same) {
-    return { status: "exists", snapshot: same, path: snapshotPath(recordDir, same.id), warnings };
-  }
+  const existing = await readAllSnapshots(recordSnapshotReader(nodeReadAdapter, recordDir));
+  const same = rerunOf(existing, head, opts.phase);
+  if (same) return { status: "exists", snapshot: same, path: snapshotPath(recordDir, same.id), warnings: [] };
+
+  const warnings: string[] = [];
+  const branchName = currentBranch(worktree);
+  if (!branchName) warnings.push(`HEAD is detached at ${head.slice(0, 12)}; snapshotting it for record ${record.branch}`);
+  else if (branchName !== record.branch) warnings.push(`worktree is on ${branchName}, record is ${record.branch}`);
+  if (isDirty(worktree)) warnings.push("worktree has uncommitted changes; snapshot covers committed HEAD only");
 
   const choice = chooseBase(record, opts.base);
   const { ref, sha } = resolveBaseRef(worktree, choice, opts.remote);
   const base = mergeBase(worktree, sha, head);
-  const branchName = currentBranch(worktree);
-  if (branchName && branchName !== record.branch) warnings.push(`worktree is on ${branchName}, record is ${record.branch}`);
-  if (isDirty(worktree)) warnings.push("worktree has uncommitted changes; snapshot covers committed HEAD only");
+  const commits = branchCommits(worktree, base, head);
+  if (!commits.length) warnings.push(`no commits between ${ref} and HEAD; snapshot is empty`);
 
   const previous = existing.at(-1) ?? null;
-  const now = opts.now ?? new Date();
-  const createdAt = previous && now.toISOString() <= previous.createdAt
-    ? new Date(Date.parse(previous.createdAt) + 1000).toISOString()
-    : now.toISOString();
   const snapshot = buildSnapshot({
-    createdAt,
+    createdAt: nextCreatedAt(previous, opts.now ?? new Date()),
     phase: opts.phase,
     repo: record.repo,
     branch: record.branch,
     head,
     base: { name: choice.name, source: choice.source, ref, sha, mergeBase: base },
     diff: diff(worktree, base, head),
-    commits: branchCommits(worktree, base, head),
+    commits,
     previous,
     rangeDiffPairs: previous ? previousRangeDiff(worktree, previous, `${base}..${head}`) : null,
   });
-  if (previous && !snapshot.mapping?.rangeDiff) warnings.push("range-diff unavailable; matched commits by patch-id and subject");
+  if (previous && !snapshot.mapping?.rangeDiff) warnings.push("range-diff unavailable (previous commits gone?); matched commits by patch-id and subject");
   return { status: "created", snapshot, path: writeSnapshot(recordDir, snapshot), warnings };
 }

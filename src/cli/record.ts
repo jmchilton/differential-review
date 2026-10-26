@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { parseRecordPath } from "../../../site/src/lib/records";
 import type { BaseSource } from "../core";
 import { remotes, revParse } from "./git";
 
@@ -19,17 +20,32 @@ export function readFrontmatter(markdown: string): Record<string, unknown> {
   return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
 }
 
-/** Repo and branch come from `repositories/<repo>/branches/<status>/<branch>`; the branch from the dir name. */
-export function readRecord(recordDir: string): RecordInfo {
-  const abs = resolve(recordDir);
+/** Repo of a `repositories/<repo>/branches/<status>/<branch>` dir; null for other layouts. */
+function recordRepo(abs: string): string | null {
   const parts = abs.split(sep);
   const i = parts.lastIndexOf("repositories");
-  const repo = i >= 0 && parts[i + 2] === "branches" && parts.length === i + 5 ? parts[i + 1] : null;
+  const parsed = i >= 0 ? parseRecordPath([...parts.slice(i), "index.md"].join("/")) : null;
+  return parsed?.kind === "branches" && parsed.rest === "index.md" ? parsed.repo : null;
+}
+
+/** Read a branch record dir; throws without index.md so a typo never creates a stray record. */
+export function readRecord(recordDir: string): RecordInfo {
+  const abs = resolve(recordDir);
   const indexPath = join(abs, "index.md");
-  const fm = existsSync(indexPath) ? readFrontmatter(readFileSync(indexPath, "utf8")) : {};
+  if (!existsSync(indexPath)) {
+    throw new Error(
+      `no branch record at ${abs} (no index.md); --record must be an existing vault/repositories/<repo>/branches/<status>/<branch> dir`,
+    );
+  }
+  let fm: Record<string, unknown>;
+  try {
+    fm = readFrontmatter(readFileSync(indexPath, "utf8"));
+  } catch (e) {
+    throw new Error(`cannot parse frontmatter in ${indexPath}: ${(e as Error).message}`);
+  }
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
   return {
-    repo,
+    repo: recordRepo(abs),
     branch: basename(abs),
     upstreamBaseBranch: str(fm.upstream_base_branch),
     parentBranch: str(fm.parent_branch),
@@ -47,7 +63,8 @@ export function chooseBase(record: RecordInfo, override: string | undefined): Ba
   if (record.parentBranch) return { name: record.parentBranch, source: "parent_branch" };
   if (record.upstreamBaseBranch) return { name: record.upstreamBaseBranch, source: "upstream_base_branch" };
   throw new Error(
-    `record ${record.branch} has no parent_branch or upstream_base_branch frontmatter in index.md; pass --base <ref>`,
+    `record ${record.branch} has no base: add \`upstream_base_branch: <branch>\` to its index.md frontmatter ` +
+      `(see vault/agents/_shared/REPOSITORY_BRANCHES.md) or pass --base <ref>`,
   );
 }
 
@@ -74,5 +91,8 @@ export function resolveBaseRef(worktree: string, choice: BaseChoice, preferredRe
     const sha = revParse(worktree, ref);
     if (sha) return { ref: ref.replace(/^refs\/heads\//, ""), sha };
   }
-  throw new Error(`could not resolve base ${choice.name} (${choice.source}); tried ${candidates.join(", ")}`);
+  throw new Error(
+    `could not resolve base ${choice.name} (${choice.source}); tried ${candidates.join(", ")}. ` +
+      `Fetch it (the CLI never fetches) or pass --base <ref>`,
+  );
 }

@@ -2,33 +2,62 @@
 import { execFileSync } from "node:child_process";
 import type { CommitInput, CommitPair } from "../core";
 
-// -U3 / myers / indent heuristic are git's defaults, pinned against diff.* config.
+// Git's defaults, pinned against diff.* config (patch-ids hash the diff text, context included).
 const DIFF_FLAGS = [
   "--no-ext-diff",
   "--no-color",
   "--no-textconv",
+  "--no-relative",
   "--src-prefix=a/",
   "--dst-prefix=b/",
   "-M",
+  "-l1000",
+  "-O/dev/null",
   "--full-index",
   "-U3",
   "--inter-hunk-context=0",
   "--diff-algorithm=myers",
   "--indent-heuristic",
   "--ignore-submodules=none",
+  "--submodule=short",
 ];
-const CONFIG = ["-c", "core.quotePath=false", "-c", "color.ui=never"];
+// `--no-optional-locks` keeps `git status` from rewriting the worktree index (the CLI only reads).
+const GLOBAL_ARGS = [
+  "--no-optional-locks",
+  "-c", "core.quotePath=false",
+  "-c", "color.ui=never",
+  "-c", "diff.suppressBlankEmpty=false",
+  "-c", "log.showSignature=false",
+];
 const FIELD = "\x1f";
 const RECORD = "\x1e";
 
+/** A failed git command, with git's own message. */
+export class GitError extends Error {}
+
 export function git(cwd: string, args: string[], input?: string): string {
-  return execFileSync("git", [...CONFIG, ...args], {
-    cwd,
-    input,
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024 * 1024,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  try {
+    return execFileSync("git", [...GLOBAL_ARGS, ...args], {
+      cwd,
+      input,
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (e) {
+    const err = e as { stderr?: string; message: string };
+    const detail = err.stderr?.trim().split("\n")[0] || err.message;
+    throw new GitError(`git ${args[0]} failed in ${cwd}: ${detail}`);
+  }
+}
+
+/** Top-level dir of the worktree containing `dir`; throws a readable error otherwise. */
+export function worktreeRoot(dir: string): string {
+  try {
+    return git(dir, ["rev-parse", "--show-toplevel"]).trim();
+  } catch {
+    throw new GitError(`${dir} is not inside a git worktree; pass --worktree <dir> or run from the branch's worktree`);
+  }
 }
 
 export function tryGit(cwd: string, args: string[]): string | null {
@@ -60,7 +89,9 @@ export function isDirty(cwd: string): boolean {
 }
 
 export function mergeBase(cwd: string, a: string, b: string): string {
-  return git(cwd, ["merge-base", a, b]).trim();
+  const sha = tryGit(cwd, ["merge-base", a, b])?.trim();
+  if (!sha) throw new GitError(`no common ancestor of ${a} and ${b} in ${cwd}; is --base the right branch?`);
+  return sha;
 }
 
 export function diff(cwd: string, from: string, to: string): string {

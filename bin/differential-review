@@ -1,4 +1,14 @@
 #!/bin/sh
-# Runs the bundled CLI; build first with `make diff-review-build`.
+# Runs the bundled CLI; works through symlinks. Build with `make diff-review-build`.
 set -eu
-exec node "$(dirname "$0")/../dist/differential-review.cjs" "$@"
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+bundle=$(cd "$(dirname "$self")/.." && pwd)/dist/differential-review.cjs
+if [ ! -f "$bundle" ]; then
+  echo "error: $bundle not built; run \`make diff-review-build\` in the galaxy-brain checkout" >&2
+  exit 1
+fi
+exec node "$bundle" "$@"

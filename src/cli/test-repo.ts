@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { TextFileAdapter } from "../core";
+import { nodeReadAdapter } from "./node-storage";
 
 export const GIT_ENV = {
   GIT_CONFIG_GLOBAL: "/dev/null",
@@ -78,3 +80,12 @@ export class TestRepo {
 export function numberedLines(n: number, prefix = "x"): string {
   return Array.from({ length: n }, (_, i) => `${prefix}_${i + 1} = ${i + 1}`).join("\n") + "\n";
 }
+
+/** What a plugin's adapter does; the CLI itself only has `nodeReadAdapter`. */
+export const pluginAdapter: TextFileAdapter = {
+  ...nodeReadAdapter,
+  async write(path, data) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, data);
+  },
+};
