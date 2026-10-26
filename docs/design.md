@@ -8,7 +8,7 @@ How snapshots are built, how check-offs are matched to later versions of a branc
   - Hunk check-offs are the base layer. A file counts as reviewed when all its hunks are.
   - Commit sign-off is a separate, holistic record keyed by `git patch-id`. If the patch-id is unchanged after a rebase, the sign-off holds. If it changes, the commit is flagged with only its differing hunks.
 - **States.** Every hunk, file and commit is `reviewed`, `new`, or `changed` (changed since it was reviewed).
-- **Two writers, never the same file.** The snapshot CLI writes immutable snapshots. A review UI writes `review-state.json`. The CLI's only file adapter has no `write` method, so it can't build a review-state store even by mistake.
+- **Two writers, never the same file.** The snapshot CLI writes immutable snapshots. A review UI writes `review-state.json`. The CLI's file adapter has no `write` method, so it can't build a review-state store. Its separate reply writer only appends agent responses.
 
 ## Layout
 
@@ -22,6 +22,8 @@ src/core/      pure: no fs, child_process, path or process (runs in browsers and
   review-state.ts  review-state model and immutable mutations
   derive.ts        reviewed / new / changed at hunk, file and commit level
   storage.ts       review dir layout, TextFileAdapter, SnapshotReader, ReviewStateStore, updateReviewState
+  annotations.ts   source anchors, threads, replies and placement across snapshots
+  annotation-storage.ts reviewer thread store and independent reply files
   view.ts          UI view model: buildReviewView (states, baseline, visibility), interdiffPatch
   sha256.ts        synchronous SHA-256 (no node:crypto, no async WebCrypto)
 src/cli/       Node only
@@ -222,3 +224,15 @@ Both files carry `schemaVersion` (currently 1) and `kind`. Readers reject unknow
 - **Hunks that merge or split.** Git merges two changes 7 or fewer lines apart into one hunk, e.g. when upstream deletes the lines between them or new code lands next to a reviewed hunk. The merged hunk has a new content hash, and the small old hunk can score below 0.6 against it, so identical changed lines can come back `changed` or `new`. This fails safe. A fix would fingerprint contiguous change runs within hunks, as `h2`.
 - **Non-UTF-8 content** is decoded lossily (U+FFFD). Fingerprints and patch-ids stay deterministic, but the stored diff text isn't byte-exact.
 - **Phases are a fixed list.** Adding one isn't a schema change, but free-form phases aren't supported yet.
+
+## Persistent conversations
+
+Comments use source coordinates, independent of rendered rows. A thread records `origin` (`snapshotId`, path and base path, hunk ID, old/new side, inclusive range, quoted text and up to three context lines on each side), its author, body, creation time and open/resolved status. The original anchor never changes. Replies carry a thread ID, author, human/agent source, body, creation time and optional response snapshot ID. Both records have their own kind and schema version 1. Their types and validators live in `annotations.ts`.
+
+A reviewer UI writes `annotations/threads/<id>.json` and may append human replies. The CLI only appends `annotations/replies/<id>.json` through a dedicated agent writer, using an atomic no-clobber link like snapshots. Each response has its own ID and file. Resolution changes never rewrite replies or check-offs. IDs are validated before use as path components. The vault adapter creates missing directory parents before writing.
+
+`deriveThreads` locates each original quote on its declared side within the current file's diff hunks. A unique quote establishes a placement. If several matches exist, exactly one must also match the saved surrounding context. A renamed file can match through its base-side path. A same-snapshot selection is validated at its original coordinates, including repeated text. Similar hunk matches only suggest where to inspect changed code, never a replacement line or a resolved request.
+
+Placement is derived separately from resolution: `active` in the original snapshot, `moved` when located in a later one, `outdated` when the file remains but the quote cannot be located confidently, and `unmapped` when the file is absent. Saved excerpts remain available without their source snapshots. The first UI supports ranges within a single cumulative-diff hunk. Expanding complete files and commenting on per-commit diffs remain separate work.
+
+`buildReviewView` carries thread views alongside review states. An open thread with a candidate hunk keeps that hunk visible even when reviewed or carried from the selected baseline. An unplaced thread stays accessible separately. These visibility rules never change check-off counts.

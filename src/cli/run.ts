@@ -1,8 +1,13 @@
 // differential-review CLI commands: `snapshot` (after each phase), `list` and `status` (read-only).
+import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import {
   PHASES,
+  deriveThreads,
+  readAnnotations,
+  parseReviewReply,
   deriveReview,
   emptyReviewState,
   isPhase,
@@ -14,7 +19,7 @@ import {
 import { chooseBase, type BaseChoice } from "./base.js";
 import { formatList, formatSnapshotResult, formatStatus, hunkCount } from "./format.js";
 import { currentBranch, gitCommonDir, worktreeRoot } from "./git.js";
-import { nodeReadAdapter } from "./node-storage.js";
+import { nodeReadAdapter, writeAgentReply } from "./node-storage.js";
 import { createSnapshot, type SnapshotOptions } from "./snapshot.js";
 
 export interface Io {
@@ -48,7 +53,7 @@ export interface TargetFlags {
   /** Help for `snapshot --worktree` and `--base`. */
   worktreeHelp: string;
   baseHelp: string;
-  resolve(values: Values, worktree: string, worktreeDefaulted: boolean): Target;
+  resolve(values: Values, worktree: string, worktreeDefaulted: boolean, command?: string): Target;
 }
 
 export class UsageError extends Error {}
@@ -72,16 +77,16 @@ export const DIR_TARGET: TargetFlags = {
   --branch <name>   branch the review is for (default: the worktree's current branch)`,
   worktreeHelp: "the branch's worktree (default: current dir)",
   baseHelp: "diff base (default: the branch origin/HEAD points at, or --remote's)",
-  resolve(values, worktree) {
+  resolve(values, worktree, _worktreeDefaulted, command = "snapshot") {
     let branch = str(values, "branch");
     const dir = str(values, "dir");
-    if (!branch) {
+    if (!branch && !(dir && command !== "snapshot")) {
       branch = currentBranch(worktreeRoot(worktree)) ?? undefined;
       if (!branch) throw new UsageError(`HEAD is detached in ${worktree}; pass --branch <name>`);
     }
     return {
-      dir: dir ? resolve(dir) : join(gitCommonDir(worktreeRoot(worktree)), "differential-review", branch),
-      branch,
+      dir: dir ? resolve(dir) : join(gitCommonDir(worktreeRoot(worktree)), "differential-review", branch!),
+      branch: branch ?? "", // Stored-review reads and replies do not use a branch.
       base: (option, wt, remote) => chooseBase(wt, option, remote),
       branchCheck: "warn",
     };
@@ -188,6 +193,70 @@ ${JSON_FLAG}: the full derived review`,
         else for (const line of formatStatus(current, review, state !== null)) io.out(line);
       },
     },
+    threads: {
+      summary: "list persistent review threads and responses (read-only)",
+      usage: `threads ${flags.usage} [--open] [--snapshot <id>] [--json]`,
+      help: `Lists comments, original source excerpts, current placements and replies. No running UI needed.
+
+${flags.help}
+  --open            only unresolved threads
+  --snapshot <id>   revision to locate comments against (default: latest)
+${JSON_FLAG}: [{thread, replies, placement}]`,
+      options: { ...common, open: { type: "boolean" }, snapshot: { type: "string" } },
+      async run(values, io, target) {
+        const annotations = await readAnnotations(nodeReadAdapter, target.dir);
+        const snapshots = await readAllSnapshots(snapshotReader(nodeReadAdapter, target.dir));
+        const id = str(values, "snapshot");
+        const current = id ? snapshots.find((s) => s.id === id) : snapshots.at(-1);
+        if (id && !current) throw new Error(`no snapshot ${id}; see \`list\``);
+        const threads = current ? deriveThreads(annotations, current, snapshots) : annotations.threads.map((thread) => ({
+          thread, replies: annotations.replies.filter((r) => r.threadId === thread.id),
+          placement: { state: "unmapped", path: null, hunkId: null, range: null },
+        }));
+        const visible = threads.filter((t) => !values.open || t.thread.status === "open");
+        if (values.json) { io.out(JSON.stringify(visible)); return; }
+        if (!visible.length) io.out("No review threads.");
+        for (const { thread: t, placement: p, replies } of visible) {
+          io.out(`${t.id} [${t.status}; ${p.state}] ${t.origin.path} (${t.origin.side} ${t.origin.range.join("–")})`);
+          io.out(`  original snapshot: ${t.origin.snapshotId}`);
+          io.out(`  ${t.author}: ${t.body}`);
+          for (const line of t.origin.quote.split("\n")) io.out(`    > ${line}`);
+          if (p.range) io.out(`  current: ${p.path} (${t.origin.side} ${p.range.join("–")})`);
+          for (const r of replies) io.out(`  ${r.author}${r.snapshotId ? ` @ ${r.snapshotId}` : ""}: ${r.body}`);
+        }
+      },
+    },
+    reply: {
+      summary: "append an agent reply; never changes threads or review check-offs",
+      usage: `reply ${flags.usage} --thread <id> (--body <text> | --body-file <path>) [--snapshot <id>] [--author <name>] [--json]`,
+      help: `Writes one immutable reply under annotations/replies/. Cannot resolve a thread or mark work reviewed.
+
+${flags.help}
+  --thread <id>     thread to answer (see \`threads\`)
+  --body <text>     response text
+  --body-file <path> response file, preserving literal text and newlines
+  --snapshot <id>   optional revision this response refers to (see \`list\`)
+  --author <name>   agent label (default: Agent)
+${JSON_FLAG}: the saved reply`,
+      options: { ...common, thread: { type: "string" }, body: { type: "string" }, "body-file": { type: "string" }, snapshot: { type: "string" }, author: { type: "string" } },
+      async run(values, io, target) {
+        const threadId = required(values, "thread");
+        const inline = str(values, "body"), file = str(values, "body-file");
+        if ((inline === undefined) === (file === undefined)) throw new UsageError("provide exactly one of --body or --body-file");
+        const body = file !== undefined ? readFileSync(resolve(io.cwd ?? process.cwd(), file), "utf8") : inline!;
+        if (!body.trim()) throw new UsageError("reply body must not be empty");
+        const annotations = await readAnnotations(nodeReadAdapter, target.dir);
+        if (!annotations.threads.some((t) => t.id === threadId)) throw new Error(`no thread ${threadId}; see \`threads\``);
+        const snapshotId = str(values, "snapshot");
+        if (snapshotId && !(await snapshotReader(nodeReadAdapter, target.dir).listSnapshotIds()).includes(snapshotId)) throw new Error(`no snapshot ${snapshotId}; see \`list\``);
+        const reply = parseReviewReply({ schemaVersion: 1, kind: "differential-review-reply", id: randomUUID(), threadId,
+          body, author: str(values, "author") ?? "Agent", source: "agent", createdAt: (io.now ?? new Date()).toISOString(),
+          ...(snapshotId ? { snapshotId } : {}),
+        });
+        writeAgentReply(target.dir, reply);
+        io.out(values.json ? JSON.stringify(reply) : `replied ${reply.id} to ${threadId}`);
+      },
+    },
   };
 }
 
@@ -226,7 +295,7 @@ Exit codes: 0 ok, 1 error, 2 usage error.`;
         return 0;
       }
       const worktree = str(values, "worktree");
-      const target = flags.resolve(values, worktree ?? io.cwd ?? process.cwd(), worktree === undefined);
+      const target = flags.resolve(values, worktree ?? io.cwd ?? process.cwd(), worktree === undefined, name);
       await command.run(values, io, target);
       return 0;
     } catch (e) {

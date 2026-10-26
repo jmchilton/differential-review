@@ -65,6 +65,22 @@ differential-review [<command>] --help
 
 **Exit codes.** 0 ok, 1 error (git failure, unresolvable base, unreadable snapshot), 2 usage error. Every error names the fix.
 
+## Review conversations
+
+A review UI can store comments on old or new source-line ranges with the original snapshot and quoted code. Threads survive closing the UI. An agent reads them and appends replies without changing reviewer check-offs or resolving requests:
+
+```sh
+differential-review threads --open --json
+differential-review reply --thread THREAD_ID --body-file response.md \
+  --snapshot SNAPSHOT_ID --author "Agent"
+```
+
+`threads` includes the original comment, source excerpt, replies and placement against the latest snapshot. `--snapshot <id>` selects an earlier target and `--open` selects unresolved threads. Without snapshots, it still returns the saved conversations with unmapped placements. `reply` accepts exactly one of `--body <text>` or `--body-file <path>`. Its optional `--snapshot` must name an existing snapshot. Both commands accept the usual target flags and `--json`. With `--dir`, reads and replies work outside a Git checkout or from a detached HEAD.
+
+The review dir also holds `annotations/threads/<id>.json` and `annotations/replies/<id>.json`. Keep these files with your review notes when using `--dir`. A reviewer UI creates and resolves threads. Each reply is a separate immutable file, so an agent response does not overwrite a simultaneous reviewer action.
+
+The [galaxy-brain Obsidian view](https://github.com/jmchilton/galaxy-brain) provides line selection, inline conversations, replies and resolve/reopen controls. The core exports `captureReviewOrigin`, `createReviewThread`, `deriveThreads`, `setThreadResolved` and `annotationStore` for other UIs. `buildReviewView` accepts `annotations` and keeps hunks with open threads visible under its reviewed and baseline filters.
+
 ## Library
 
 ```ts
