@@ -65,6 +65,16 @@ describe("snapshot mapping", () => {
     expect(s2.mapping!.hunks.map((h) => h.match)).toEqual(["fuzzy", "exact", "new"]);
   });
 
+  it("keeps identical commits without a patch-id (merges) paired and signed off", () => {
+    const merge = commit("m1", null, "Merge dev", "");
+    const a = snap({ at: "2026-10-26T03:00:00.000Z", phase: "implementation", head: "m1", diff: s1.diff, commits: [merge] });
+    const b = snap({ at: "2026-10-26T04:00:00.000Z", phase: "hardening", head: "m1", diff: s1.diff, commits: [merge], previous: a, rangeDiffPairs: [] });
+    expect(b.mapping!.commits[0]).toMatchObject({ method: "sha", patchIdChanged: false });
+    const state = signOffCommit(emptyReviewState(), a, merge.sha, NOW);
+    expect(deriveReview(b, state, [a, b]).commits[0].state).toBe("reviewed");
+    expect(changesSincePhase([a, b], "implementation")!.commits[0].change).toBe("unchanged");
+  });
+
   it("falls back to subject matching without range-diff", () => {
     const s = snap({ at: "2026-10-26T03:00:00.000Z", phase: "polishing", head: "ccc3", diff: s2.diff, commits: [commit("e1", "zz", "Cache jobs", hunkA("False"))], previous: s1 });
     expect(s.mapping!.rangeDiff).toBe(false);

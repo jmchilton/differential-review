@@ -86,7 +86,8 @@ export interface HunkMatch {
   similarity: number;
 }
 
-export type CommitMatchMethod = "patch-id" | "range-diff" | "subject";
+// `sha`: the identical commit (e.g. merges, which have no patch-id and range-diff skips).
+export type CommitMatchMethod = "sha" | "patch-id" | "range-diff" | "subject";
 
 export interface CommitMapping {
   sha: string;

@@ -63,7 +63,9 @@ export function changesBetween(snapshots: Snapshot[], from: Snapshot, to: Snapsh
 
   const used = new Set<string>();
   const commits = to.commits.map((c): CommitChange => {
-    const same = c.patchId !== null && from.commits.find((p) => !used.has(p.sha) && p.patchId === c.patchId);
+    const same =
+      from.commits.find((p) => !used.has(p.sha) && p.sha === c.sha) ??
+      (c.patchId !== null && from.commits.find((p) => !used.has(p.sha) && p.patchId === c.patchId));
     if (same) {
       used.add(same.sha);
       return { sha: c.sha, change: "unchanged", previousSha: same.sha };

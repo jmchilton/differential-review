@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs the bundled CLI; build first with `make diff-review-build`.
+set -eu
+exec node "$(dirname "$0")/../dist/differential-review.cjs" "$@"

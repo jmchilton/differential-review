@@ -80,7 +80,7 @@ export function buildMapping(
     usedPrev.add(previousSha);
     const prevCommit = previous.commits.find((c) => c.sha === previousSha)!;
     const commit = next.commits.find((c) => c.sha === sha)!;
-    const changed = prevCommit.patchId === null || prevCommit.patchId !== commit.patchId;
+    const changed = sha !== previousSha && (prevCommit.patchId === null || prevCommit.patchId !== commit.patchId);
     const entry: CommitMapping = { sha, previousSha, method, patchIdChanged: changed };
     if (changed) {
       const o = hunkRefs(commitFiles(prevCommit));
@@ -91,7 +91,10 @@ export function buildMapping(
   };
 
   for (const commit of next.commits) {
-    if (commit.patchId === null) continue;
+    if (previous.commits.some((p) => p.sha === commit.sha)) pair(commit.sha, commit.sha, "sha");
+  }
+  for (const commit of next.commits) {
+    if (commit.patchId === null || mapped.has(commit.sha)) continue;
     const prev = previous.commits.find((p) => !usedPrev.has(p.sha) && p.patchId === commit.patchId);
     if (prev) pair(commit.sha, prev.sha, "patch-id");
   }
