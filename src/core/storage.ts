@@ -1,7 +1,7 @@
 // Storage layout and async interfaces; implemented over Obsidian's vault adapter, Node fs, or a native host.
 import { parseReviewState } from "./review-state";
 import { sortSnapshots } from "./snapshot";
-import { SNAPSHOT_SCHEMA_VERSION, type ReviewState, type Snapshot } from "./types";
+import { FINGERPRINT_VERSION, SNAPSHOT_SCHEMA_VERSION, type ReviewState, type Snapshot } from "./types";
 
 export const REVIEW_DIR = "differential-review";
 export const SNAPSHOTS_DIR = "snapshots";
@@ -53,6 +53,7 @@ export function parseSnapshot(json: unknown): Snapshot {
   const s = json as Partial<Snapshot> | null;
   if (!s || s.kind !== "differential-review-snapshot") throw new Error("not a differential-review snapshot");
   if (s.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) throw new Error(`unsupported snapshot schemaVersion ${s.schemaVersion}`);
+  if (s.fingerprintVersion !== FINGERPRINT_VERSION) throw new Error(`unsupported fingerprintVersion ${s.fingerprintVersion}`);
   return s as Snapshot;
 }
 
@@ -68,15 +69,18 @@ export function recordSnapshotReader(adapter: TextFileAdapter, recordDir: string
   };
 }
 
-export function recordReviewStateStore(adapter: TextFileAdapter, recordDir: string): ReviewStateStore {
+/** Read-only access for tools that must never write review state (the CLI). */
+export async function readReviewState(adapter: Pick<TextFileAdapter, "exists" | "read">, recordDir: string): Promise<ReviewState | null> {
   const path = reviewStatePath(recordDir);
+  if (!(await adapter.exists(path))) return null;
+  return parseReviewState(JSON.parse(await adapter.read(path)));
+}
+
+export function recordReviewStateStore(adapter: TextFileAdapter, recordDir: string): ReviewStateStore {
   return {
-    async readReviewState() {
-      if (!(await adapter.exists(path))) return null;
-      return parseReviewState(JSON.parse(await adapter.read(path)));
-    },
+    readReviewState: () => readReviewState(adapter, recordDir),
     async writeReviewState(state) {
-      await adapter.write(path, JSON.stringify(state, null, 2) + "\n");
+      await adapter.write(reviewStatePath(recordDir), JSON.stringify(state, null, 2) + "\n");
     },
   };
 }

@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  commitFiles,
   deriveReview,
   emptyReviewState,
   markFileReviewed,
@@ -9,6 +10,7 @@ import {
   recordSnapshotReader,
   reviewStatePath,
   signOffCommit,
+  snapshotFiles,
   snapshotsDir,
   type ReviewState,
   type Snapshot,
@@ -81,6 +83,8 @@ describe("snapshot CLI", () => {
     expect(s.commits).toHaveLength(1);
     expect(s.commits[0].patchId).toMatch(/^[0-9a-f]{40}$/);
     expect(s.commits[0].subject).toBe("Change two values");
+    expect(() => snapshotFiles(s)).not.toThrow();
+    expect(() => commitFiles(s.commits[0])).not.toThrow();
   });
 
   it("is a no-op when re-run on the same head and phase, and never overwrites", async () => {

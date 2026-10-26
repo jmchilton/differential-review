@@ -5,6 +5,7 @@ import {
   FINGERPRINT_VERSION,
   SNAPSHOT_SCHEMA_VERSION,
   type CommitMapping,
+  type FileIndex,
   type Phase,
   type Snapshot,
   type SnapshotBase,
@@ -41,22 +42,31 @@ export function snapshotId(createdAt: string, phase: Phase, head: string): strin
 
 const parsedCache = new WeakMap<object, ParsedFile[]>();
 
-function cachedParse(owner: { diff: string }): ParsedFile[] {
+/** Throws when re-parsed fingerprints differ from the stored index (parser drift). */
+export function verifyFingerprints(stored: FileIndex[], parsed: ParsedFile[]): void {
+  const ids = (files: { hunks: { id: string }[] }[]) => files.flatMap((f) => f.hunks.map((h) => h.id)).join(",");
+  if (ids(stored) !== ids(parsed)) {
+    throw new Error(`stored fingerprints don't match this parser (${FINGERPRINT_VERSION}); rebuild or bump the fingerprint version`);
+  }
+}
+
+function cachedParse(owner: { diff: string; files?: FileIndex[] }): ParsedFile[] {
   let files = parsedCache.get(owner);
   if (!files) {
     files = parseDiff(owner.diff);
+    if (owner.files) verifyFingerprints(owner.files, files);
     parsedCache.set(owner, files);
   }
   return files;
 }
 
-/** Parsed cumulative diff of a snapshot, with hunk lines; memoized per object. */
-export function snapshotFiles(snapshot: Pick<Snapshot, "diff">): ParsedFile[] {
+/** Parsed cumulative diff of a snapshot, with hunk lines; memoized per object and checked against `files`. */
+export function snapshotFiles(snapshot: Pick<Snapshot, "diff"> & Partial<Pick<Snapshot, "files">>): ParsedFile[] {
   return cachedParse(snapshot);
 }
 
 /** Parsed diff of one commit; memoized per object. */
-export function commitFiles(commit: Pick<SnapshotCommit, "diff">): ParsedFile[] {
+export function commitFiles(commit: Pick<SnapshotCommit, "diff"> & Partial<Pick<SnapshotCommit, "files">>): ParsedFile[] {
   return cachedParse(commit);
 }
 

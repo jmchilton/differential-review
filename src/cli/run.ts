@@ -7,7 +7,7 @@ import {
   emptyReviewState,
   isPhase,
   readAllSnapshots,
-  recordReviewStateStore,
+  readReviewState,
   recordSnapshotReader,
 } from "../core";
 import { nodeAdapter } from "./node-storage";
@@ -88,7 +88,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
     if (command === "status") {
       const current = values.snapshot ? snapshots.find((s) => s.id === values.snapshot) : snapshots.at(-1);
       if (!current) throw new UsageError(values.snapshot ? `no snapshot ${values.snapshot}` : "no snapshots yet");
-      const state = (await recordReviewStateStore(nodeAdapter, record).readReviewState()) ?? emptyReviewState();
+      const state = (await readReviewState(nodeAdapter, record)) ?? emptyReviewState();
       const review = deriveReview(current, state, snapshots);
       if (values.json) io.out(JSON.stringify(review));
       else {

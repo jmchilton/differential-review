@@ -1,14 +1,18 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { parseDiff, toFileIndex } from "./diff";
 import { emptyReviewState } from "./review-state";
+import { commitFiles, snapshotFiles } from "./snapshot";
 import {
   readAllSnapshots,
   recordReviewStateStore,
   recordSnapshotReader,
   reviewStatePath,
+  parseSnapshot,
   snapshotPath,
   type TextFileAdapter,
 } from "./storage";
-import { fileDiff, snap } from "./test-helpers";
+import { commit, fileDiff, snap } from "./test-helpers";
 
 function memoryAdapter(files: Record<string, string> = {}): TextFileAdapter & { files: Record<string, string> } {
   return {
@@ -62,5 +66,31 @@ describe("record storage", () => {
   it("rejects files that are not snapshots", async () => {
     const adapter = memoryAdapter({ [snapshotPath(RECORD, "bad")]: JSON.stringify({ kind: "nope" }) });
     await expect(recordSnapshotReader(adapter, RECORD).readSnapshot("bad")).rejects.toThrow();
+  });
+});
+
+describe("fingerprint integrity", () => {
+  const MIXED = readFileSync(new URL("./fixtures/mixed.diff", import.meta.url), "utf8");
+  const s = snap({ at: "2026-10-26T00:00:00.000Z", phase: "implementation", head: "a1", diff: MIXED, commits: [commit("c1", "p1", "All", MIXED)] });
+
+  it("stores exactly the fingerprints a re-parse produces", () => {
+    const reparsed = parseDiff(MIXED).map(toFileIndex);
+    expect(s.files).toEqual(reparsed);
+    expect(s.commits[0].files).toEqual(reparsed);
+    const fromDisk = JSON.parse(JSON.stringify(s));
+    expect(() => snapshotFiles(fromDisk)).not.toThrow();
+    expect(() => commitFiles(fromDisk.commits[0])).not.toThrow();
+  });
+
+  it("fails loudly when stored fingerprints drift from the parser", () => {
+    const tampered = JSON.parse(JSON.stringify(s));
+    tampered.files[0].hunks[0].id = "h1:0000000000000000";
+    expect(() => snapshotFiles(tampered)).toThrow(/fingerprints don't match/);
+    tampered.commits[0].files[1].hunks[0].id = "h1:0000000000000000";
+    expect(() => commitFiles(tampered.commits[0])).toThrow(/fingerprints don't match/);
+  });
+
+  it("rejects snapshots with another fingerprint version", () => {
+    expect(() => parseSnapshot({ ...JSON.parse(JSON.stringify(s)), fingerprintVersion: "h2" })).toThrow(/fingerprintVersion/);
   });
 });
