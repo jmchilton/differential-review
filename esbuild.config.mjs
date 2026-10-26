@@ -8,4 +8,6 @@ await esbuild.build({
   format: "cjs",
   target: "node20",
   logLevel: "info",
+  // One tsconfig for all files, so site/src/lib/records.ts doesn't pull in site/tsconfig.json (extends astro).
+  tsconfig: "tsconfig.json",
 });

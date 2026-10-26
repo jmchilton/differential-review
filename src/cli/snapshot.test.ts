@@ -282,13 +282,44 @@ describe("snapshot CLI", () => {
     expect(badBase.err).toMatch(/could not resolve base nope .*tried nope\. Fetch it/);
   });
 
-  it("defaults --worktree to the current dir and warns on a detached HEAD", async () => {
+  it("defaults --worktree to the current dir only when it is on the record's branch", async () => {
+    const { repo, record } = setup();
+    const ok = await cliIn(`${repo.dir}/lib`, ["snapshot", "--record", record, "--phase", "implementation"]);
+    expect(ok.code).toBe(0);
+    expect(ok.err).toBe("");
+
+    repo.git("checkout", "-q", "main");
+    const wrong = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "hardening"]);
+    expect(wrong.code).toBe(1);
+    expect(wrong.err).toMatch(/^error: worktree is on main, record is feature \(in .*\); pass --worktree/);
+    repo.git("checkout", "-q", "--detach", "feature");
+    const detached = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "hardening"]);
+    expect(detached.code).toBe(1);
+    expect(detached.err).toMatch(/^error: HEAD is detached at [0-9a-f]{12}; snapshotting it for record feature/);
+    expect(await snapshots(record)).toHaveLength(1);
+  });
+
+  it("only warns about a detached HEAD or another branch when --worktree is explicit", async () => {
     const { repo, record } = setup();
     repo.git("checkout", "-q", "--detach");
-    const r = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "implementation"]);
+    const r = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", "implementation");
     expect(r.code).toBe(0);
     expect(r.err).toMatch(/^warning: HEAD is detached at [0-9a-f]{12}; snapshotting it for record feature$/);
     expect((await snapshots(record))[0].head).toBe(repo.head());
+  });
+
+  it("snapshots again on a same-head rerun against a different base", async () => {
+    const { repo, record } = setup();
+    const older = repo.git("rev-parse", "main").trim();
+    repo.git("checkout", "-q", "main");
+    repo.write("lib/upstream.py", "u = 1\n");
+    repo.commit("Upstream");
+    repo.git("checkout", "-q", "feature");
+    repo.git("merge", "-q", "--no-edit", "main");
+    await snapshot(repo, record, "implementation", "--base", older);
+    const rerun = await snapshot(repo, record, "implementation", "--base", "main");
+    expect(firstLine(rerun.out)).toMatch(/^created /);
+    expect((await snapshots(record)).map((s) => s.files.length)).toEqual([2, 1]);
   });
 
   it("treats bad flags and commands as usage errors with per-command help", async () => {
@@ -301,7 +332,7 @@ describe("snapshot CLI", () => {
     const help = await cli("snapshot", "--help");
     expect(help.code).toBe(0);
     expect(help.out).toMatch(/^usage: differential-review snapshot --record <dir> --phase/);
-    expect(help.out).toContain("--worktree <dir>  the branch's worktree (default: current dir)");
+    expect(help.out).toContain("--worktree <dir>  the branch's worktree (default: current dir, which must be on the record's branch)");
     const top = await cli("--help");
     expect(top.code).toBe(0);
     expect(top.out).toMatch(/snapshot .*\n.*list .*\n.*status /);

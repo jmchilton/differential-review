@@ -67,7 +67,7 @@ and summarizes what changed since the previous snapshot. A rerun on the same hea
 
 ${RECORD_FLAG}
   --phase <phase>   ${PHASES.join(", ")}
-  --worktree <dir>  the branch's worktree (default: current dir)
+  --worktree <dir>  the branch's worktree (default: current dir, which must be on the record's branch)
   --base <ref>      diff base, overriding the record's parent_branch / upstream_base_branch
   --remote <name>   remote to try first when resolving the base
 ${JSON_FLAG}: {status, id, path, summary, warnings}`,
@@ -77,6 +77,7 @@ ${JSON_FLAG}: {status, id, path, summary, warnings}`,
       if (!isPhase(phase)) throw new UsageError(`--phase must be one of ${PHASES.join(", ")}, got ${phase}`);
       const result = await createSnapshot({
         worktree: str(values, "worktree") ?? io.cwd ?? process.cwd(),
+        requireRecordBranch: str(values, "worktree") === undefined,
         record: required(values, "record"),
         phase,
         base: str(values, "base"),

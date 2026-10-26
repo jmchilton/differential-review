@@ -19,6 +19,8 @@ export interface SnapshotOptions {
   phase: Phase;
   base?: string;
   remote?: string;
+  /** Fail, not warn, when HEAD isn't on the record's branch (set when --worktree was defaulted to cwd). */
+  requireRecordBranch?: boolean;
   now?: Date;
 }
 
@@ -38,12 +40,17 @@ function previousRangeDiff(worktree: string, previous: Snapshot, newRange: strin
   }
 }
 
-/** A snapshot of this head and phase since the head last changed; reruns reuse it. */
-function rerunOf(existing: Snapshot[], head: string, phase: Phase): Snapshot | undefined {
+/** A snapshot of this head, base and phase since the head last changed; reruns reuse it. */
+function rerunOf(existing: Snapshot[], head: string, mergeBase: string, phase: Phase): Snapshot | undefined {
   for (let i = existing.length - 1; i >= 0 && existing[i].head === head; i--) {
-    if (existing[i].phase === phase) return existing[i];
+    if (existing[i].phase === phase && existing[i].base.mergeBase === mergeBase) return existing[i];
   }
   return undefined;
+}
+
+function branchProblem(branchName: string | null, head: string, recordBranch: string): string | null {
+  if (!branchName) return `HEAD is detached at ${head.slice(0, 12)}; snapshotting it for record ${recordBranch}`;
+  return branchName === recordBranch ? null : `worktree is on ${branchName}, record is ${recordBranch}`;
 }
 
 function nextCreatedAt(previous: Snapshot | null, now: Date): string {
@@ -58,19 +65,18 @@ export async function createSnapshot(opts: SnapshotOptions): Promise<SnapshotRes
   const worktree = worktreeRoot(resolve(opts.worktree));
   const head = git(worktree, ["rev-parse", "HEAD"]).trim();
 
-  const existing = await readAllSnapshots(recordSnapshotReader(nodeReadAdapter, recordDir));
-  const same = rerunOf(existing, head, opts.phase);
-  if (same) return { status: "exists", snapshot: same, path: snapshotPath(recordDir, same.id), warnings: [] };
-
-  const warnings: string[] = [];
-  const branchName = currentBranch(worktree);
-  if (!branchName) warnings.push(`HEAD is detached at ${head.slice(0, 12)}; snapshotting it for record ${record.branch}`);
-  else if (branchName !== record.branch) warnings.push(`worktree is on ${branchName}, record is ${record.branch}`);
-  if (isDirty(worktree)) warnings.push("worktree has uncommitted changes; snapshot covers committed HEAD only");
+  const problem = branchProblem(currentBranch(worktree), head, record.branch);
+  if (problem && opts.requireRecordBranch) throw new Error(`${problem} (in ${worktree}); pass --worktree <the branch's worktree>`);
 
   const choice = chooseBase(record, opts.base);
   const { ref, sha } = resolveBaseRef(worktree, choice, opts.remote);
   const base = mergeBase(worktree, sha, head);
+  const existing = await readAllSnapshots(recordSnapshotReader(nodeReadAdapter, recordDir));
+  const same = rerunOf(existing, head, base, opts.phase);
+  if (same) return { status: "exists", snapshot: same, path: snapshotPath(recordDir, same.id), warnings: [] };
+
+  const warnings = problem ? [problem] : [];
+  if (isDirty(worktree)) warnings.push("worktree has uncommitted changes; snapshot covers committed HEAD only");
   const commits = branchCommits(worktree, base, head);
   if (!commits.length) warnings.push(`no commits between ${ref} and HEAD; snapshot is empty`);
 
