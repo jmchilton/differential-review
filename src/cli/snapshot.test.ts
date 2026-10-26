@@ -252,7 +252,7 @@ describe("snapshot CLI", () => {
     const { repo, record } = setup();
     const r = await cli("snapshot", "--worktree", repo.dir, "--record", record, "--phase", "rebase");
     expect(r.code).toBe(2);
-    expect(r.err).toMatch(/--phase must be one of implementation, hardening, polishing, revision,/);
+    expect(r.err).toMatch(/--phase must be one of implementation, hardening, polishing, revision, review,/);
     expect(existsSync(snapshotsDir(record))).toBe(false);
   });
 
@@ -266,7 +266,7 @@ describe("snapshot CLI", () => {
     ]) {
       const r = await cli(...argv);
       expect(r.code).toBe(1);
-      expect(r.err).toMatch(/no branch record at .*_typo \(no index\.md\)/);
+      expect(r.err).toMatch(/no record at .*_typo \(no index\.md\)/);
     }
     expect(existsSync(typo)).toBe(false);
   });
@@ -308,6 +308,33 @@ describe("snapshot CLI", () => {
     expect((await snapshots(record))[0].head).toBe(repo.head());
   });
 
+  it("snapshots a PR head into a review record without the branch check or touching the worktree", async () => {
+    const { repo } = setup();
+    const prHead = repo.head();
+    const record = repo.record("42", null, "reviews");
+    repo.git("checkout", "-q", "-b", "pr_42_review_0");
+    repo.write("lib/fix.py", "fix = 1\n");
+    const reviewHead = repo.commit("Review fix");
+
+    const noBase = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "review", "--head", "feature"]);
+    expect(noBase.code).toBe(1);
+    expect(noBase.err).toMatch(/^error: review record 42 has no base: pass --base <the PR's base branch>/);
+
+    const r = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "review", "--base", "main", "--head", "feature"]);
+    expect(r.code).toBe(0);
+    expect(r.err).toBe("");
+    const [s] = await snapshots(record);
+    expect(s.head).toBe(prHead);
+    expect(s.phase).toBe("review");
+    expect(s.files.map((f) => f.path)).toEqual(["lib/mod.py"]);
+    expect(repo.head()).toBe(reviewHead);
+    expect(repo.git("symbolic-ref", "--short", "HEAD").trim()).toBe("pr_42_review_0");
+
+    const missing = await cliIn(repo.dir, ["snapshot", "--record", record, "--phase", "review", "--base", "main", "--head", "nope"]);
+    expect(missing.code).toBe(1);
+    expect(missing.err).toMatch(/^error: --head nope is not a commit in .*; fetch it first/);
+  });
+
   it("snapshots again on a same-head rerun against a different base", async () => {
     const { repo, record } = setup();
     const older = repo.git("rev-parse", "main").trim();
@@ -332,7 +359,8 @@ describe("snapshot CLI", () => {
     const help = await cli("snapshot", "--help");
     expect(help.code).toBe(0);
     expect(help.out).toMatch(/^usage: differential-review snapshot --record <dir> --phase/);
-    expect(help.out).toContain("--worktree <dir>  the branch's worktree (default: current dir, which must be on the record's branch)");
+    expect(help.out).toContain("--worktree <dir>  the branch's worktree (default: current dir, which must be on a branch record's branch)");
+    expect(help.out).toContain("--head <rev>");
     const top = await cli("--help");
     expect(top.code).toBe(0);
     expect(top.out).toMatch(/snapshot .*\n.*list .*\n.*status /);

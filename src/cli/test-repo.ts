@@ -67,9 +67,9 @@ export class TestRepo {
     return this.git("rev-parse", "HEAD").trim();
   }
 
-  /** A vault branch record dir with optional index.md frontmatter. */
-  record(branch: string, frontmatter: Record<string, string> | null): string {
-    const dir = join(this.vault, "repositories", "demo", "branches", "active", branch);
+  /** A vault branch (or review) record dir with optional index.md frontmatter. */
+  record(branch: string, frontmatter: Record<string, string> | null, kind: "branches" | "reviews" = "branches"): string {
+    const dir = join(this.vault, "repositories", "demo", kind, "active", branch);
     mkdirSync(dir, { recursive: true });
     const fm = frontmatter ? `---\n${Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`).join("\n")}\n---\n` : "";
     writeFileSync(join(dir, "index.md"), `${fm}# ${branch}\n`);

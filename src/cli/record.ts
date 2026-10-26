@@ -1,13 +1,15 @@
-// Branch record metadata (index.md frontmatter) and diff-base resolution.
+// Branch/review record metadata (index.md frontmatter) and diff-base resolution.
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { parseRecordPath } from "../../../site/src/lib/records";
-import type { BaseSource } from "../core";
+import { isReviewableRecordKind, type BaseSource, type ReviewableRecordKind } from "../core";
 import { remotes, revParse } from "./git";
 
 export interface RecordInfo {
   repo: string | null;
+  kind: ReviewableRecordKind | null;
+  /** Record dir name: the branch name, or the PR number for review records. */
   branch: string;
   upstreamBaseBranch: string | null;
   parentBranch: string | null;
@@ -20,21 +22,22 @@ export function readFrontmatter(markdown: string): Record<string, unknown> {
   return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
 }
 
-/** Repo of a `repositories/<repo>/branches/<status>/<branch>` dir; null for other layouts. */
-function recordRepo(abs: string): string | null {
+/** Repo and kind of a `repositories/<repo>/{branches,reviews}/<status>/<name>` dir; nulls for other layouts. */
+function recordLocation(abs: string): { repo: string | null; kind: ReviewableRecordKind | null } {
   const parts = abs.split(sep);
   const i = parts.lastIndexOf("repositories");
   const parsed = i >= 0 ? parseRecordPath([...parts.slice(i), "index.md"].join("/")) : null;
-  return parsed?.kind === "branches" && parsed.rest === "index.md" ? parsed.repo : null;
+  if (parsed?.rest !== "index.md" || !isReviewableRecordKind(parsed.kind)) return { repo: null, kind: null };
+  return { repo: parsed.repo, kind: parsed.kind };
 }
 
-/** Read a branch record dir; throws without index.md so a typo never creates a stray record. */
+/** Read a branch or review record dir; throws without index.md so a typo never creates a stray record. */
 export function readRecord(recordDir: string): RecordInfo {
   const abs = resolve(recordDir);
   const indexPath = join(abs, "index.md");
   if (!existsSync(indexPath)) {
     throw new Error(
-      `no branch record at ${abs} (no index.md); --record must be an existing vault/repositories/<repo>/branches/<status>/<branch> dir`,
+      `no record at ${abs} (no index.md); --record must be an existing vault/repositories/<repo>/{branches,reviews}/<status>/<name> dir`,
     );
   }
   let fm: Record<string, unknown>;
@@ -45,7 +48,7 @@ export function readRecord(recordDir: string): RecordInfo {
   }
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
   return {
-    repo: recordRepo(abs),
+    ...recordLocation(abs),
     branch: basename(abs),
     upstreamBaseBranch: str(fm.upstream_base_branch),
     parentBranch: str(fm.parent_branch),
@@ -62,6 +65,7 @@ export function chooseBase(record: RecordInfo, override: string | undefined): Ba
   if (override) return { name: override, source: "override" };
   if (record.parentBranch) return { name: record.parentBranch, source: "parent_branch" };
   if (record.upstreamBaseBranch) return { name: record.upstreamBaseBranch, source: "upstream_base_branch" };
+  if (record.kind === "reviews") throw new Error(`review record ${record.branch} has no base: pass --base <the PR's base branch>`);
   throw new Error(
     `record ${record.branch} has no base: add \`upstream_base_branch: <branch>\` to its index.md frontmatter ` +
       `(see vault/agents/_shared/REPOSITORY_BRANCHES.md) or pass --base <ref>`,

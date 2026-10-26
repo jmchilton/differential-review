@@ -9,7 +9,7 @@ import {
   type Phase,
   type Snapshot,
 } from "../core";
-import { branchCommits, commitExists, currentBranch, diff, git, isDirty, mergeBase, rangeDiff, worktreeRoot } from "./git";
+import { branchCommits, commitExists, currentBranch, diff, git, isDirty, mergeBase, rangeDiff, revParse, worktreeRoot } from "./git";
 import { nodeReadAdapter, writeSnapshot } from "./node-storage";
 import { chooseBase, readRecord, resolveBaseRef } from "./record";
 
@@ -19,6 +19,8 @@ export interface SnapshotOptions {
   phase: Phase;
   base?: string;
   remote?: string;
+  /** Commit to snapshot instead of the worktree's HEAD; skips the branch check. */
+  head?: string;
   /** Fail, not warn, when HEAD isn't on the record's branch (set when --worktree was defaulted to cwd). */
   requireRecordBranch?: boolean;
   now?: Date;
@@ -63,9 +65,12 @@ export async function createSnapshot(opts: SnapshotOptions): Promise<SnapshotRes
   const recordDir = resolve(opts.record);
   const record = readRecord(recordDir);
   const worktree = worktreeRoot(resolve(opts.worktree));
-  const head = git(worktree, ["rev-parse", "HEAD"]).trim();
+  const worktreeHead = git(worktree, ["rev-parse", "HEAD"]).trim();
+  const head = opts.head ? revParse(worktree, opts.head) : worktreeHead;
+  if (!head) throw new Error(`--head ${opts.head} is not a commit in ${worktree}; fetch it first`);
 
-  const problem = branchProblem(currentBranch(worktree), head, record.branch);
+  const checkBranch = record.kind !== "reviews" && !opts.head;
+  const problem = checkBranch ? branchProblem(currentBranch(worktree), head, record.branch) : null;
   if (problem && opts.requireRecordBranch) throw new Error(`${problem} (in ${worktree}); pass --worktree <the branch's worktree>`);
 
   const choice = chooseBase(record, opts.base);
@@ -76,7 +81,7 @@ export async function createSnapshot(opts: SnapshotOptions): Promise<SnapshotRes
   if (same) return { status: "exists", snapshot: same, path: snapshotPath(recordDir, same.id), warnings: [] };
 
   const warnings = problem ? [problem] : [];
-  if (isDirty(worktree)) warnings.push("worktree has uncommitted changes; snapshot covers committed HEAD only");
+  if (head === worktreeHead && isDirty(worktree)) warnings.push("worktree has uncommitted changes; snapshot covers committed HEAD only");
   const commits = branchCommits(worktree, base, head);
   if (!commits.length) warnings.push(`no commits between ${ref} and HEAD; snapshot is empty`);
 

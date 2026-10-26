@@ -37,7 +37,7 @@ interface Command {
 class UsageError extends Error {}
 
 const RECORD_OPTION = { record: { type: "string" }, json: { type: "boolean" } } as const;
-const RECORD_FLAG = "  --record <dir>    branch record dir: vault/repositories/<repo>/branches/<status>/<branch>";
+const RECORD_FLAG = "  --record <dir>    record dir: vault/repositories/<repo>/{branches,reviews}/<status>/<name>";
 const JSON_FLAG = "  --json            machine-readable output";
 
 function str(values: Values, name: string): string | undefined {
@@ -60,18 +60,19 @@ async function loadSnapshots(values: Values) {
 const COMMANDS: Record<string, Command> = {
   snapshot: {
     summary: "snapshot the branch after a phase (agents run this)",
-    usage: `snapshot --record <dir> --phase <${PHASES.join("|")}> [--worktree <dir>] [--base <ref>] [--remote <name>] [--json]`,
+    usage: `snapshot --record <dir> --phase <${PHASES.join("|")}> [--worktree <dir>] [--head <rev>] [--base <ref>] [--remote <name>] [--json]`,
     help: `Writes an immutable snapshot of the worktree's committed HEAD to <record>/differential-review/snapshots/
 and summarizes what changed since the previous snapshot. A rerun on the same head and phase is a no-op
 ("exists"). Never writes review-state.json, never fetches.
 
 ${RECORD_FLAG}
   --phase <phase>   ${PHASES.join(", ")}
-  --worktree <dir>  the branch's worktree (default: current dir, which must be on the record's branch)
-  --base <ref>      diff base, overriding the record's parent_branch / upstream_base_branch
+  --worktree <dir>  the branch's worktree (default: current dir, which must be on a branch record's branch)
+  --head <rev>      commit to snapshot instead of HEAD, e.g. FETCH_HEAD after fetching a PR
+  --base <ref>      diff base, overriding the record's parent_branch / upstream_base_branch (required for reviews)
   --remote <name>   remote to try first when resolving the base
 ${JSON_FLAG}: {status, id, path, summary, warnings}`,
-    options: { ...RECORD_OPTION, phase: { type: "string" }, worktree: { type: "string" }, base: { type: "string" }, remote: { type: "string" } },
+    options: { ...RECORD_OPTION, phase: { type: "string" }, worktree: { type: "string" }, head: { type: "string" }, base: { type: "string" }, remote: { type: "string" } },
     async run(values, io) {
       const phase = required(values, "phase");
       if (!isPhase(phase)) throw new UsageError(`--phase must be one of ${PHASES.join(", ")}, got ${phase}`);
@@ -80,6 +81,7 @@ ${JSON_FLAG}: {status, id, path, summary, warnings}`,
         requireRecordBranch: str(values, "worktree") === undefined,
         record: required(values, "record"),
         phase,
+        head: str(values, "head"),
         base: str(values, "base"),
         remote: str(values, "remote"),
         now: io.now,

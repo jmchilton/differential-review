@@ -4,6 +4,7 @@ import { parseDiff, toFileIndex } from "./diff";
 import { emptyReviewState, markHunksReviewed } from "./review-state";
 import { commitFiles, snapshotFiles } from "./snapshot";
 import {
+  isReviewableRecordKind,
   readAllSnapshots,
   recordReviewStateStore,
   recordSnapshotReader,
@@ -14,6 +15,12 @@ import {
   updateReviewState,
 } from "./storage";
 import { commit, fileDiff, snap } from "./test-helpers";
+
+describe("isReviewableRecordKind", () => {
+  it("accepts branch and review records only", () => {
+    expect(["branches", "reviews", "issues", "projects"].filter(isReviewableRecordKind)).toEqual(["branches", "reviews"]);
+  });
+});
 
 function memoryAdapter(files: Record<string, string> = {}): TextFileAdapter & { files: Record<string, string> } {
   return {

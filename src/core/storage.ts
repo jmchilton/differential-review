@@ -6,6 +6,13 @@ import { FINGERPRINT_VERSION, SNAPSHOT_SCHEMA_VERSION, type ReviewState, type Sn
 export const REVIEW_DIR = "differential-review";
 export const SNAPSHOTS_DIR = "snapshots";
 export const REVIEW_STATE_FILE = "review-state.json";
+/** Vault record kinds (`repositories/<repo>/<kind>/...`) that hold a differential review. */
+export const REVIEWABLE_RECORD_KINDS = ["branches", "reviews"] as const;
+export type ReviewableRecordKind = (typeof REVIEWABLE_RECORD_KINDS)[number];
+
+export function isReviewableRecordKind(kind: string): kind is ReviewableRecordKind {
+  return (REVIEWABLE_RECORD_KINDS as readonly string[]).includes(kind);
+}
 
 /** Minimal text-file access, relative to whatever root the host uses (vault root, filesystem). */
 export interface TextFileAdapter {
